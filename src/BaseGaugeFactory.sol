@@ -39,7 +39,7 @@ abstract contract BaseGaugeFactory {
     /**
      * @notice Returns true if `gauge` was created by this factory.
      */
-    function isGaugeFromFactory(address gauge) external view override returns (bool) {
+    function isGaugeFromFactory(address gauge) external view returns (bool) {
         return _isGaugeFromFactory[gauge];
     }
 

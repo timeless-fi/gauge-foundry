@@ -24,9 +24,9 @@ interface ILiquidityGauge {
     event RelativeWeightCapChanged(uint256 new_relative_weight_cap);
 
     /**
-     * @notice Returns BAL liquidity emissions calculated during checkpoints for the given user.
+     * @notice Returns liquidity emissions calculated during checkpoints for the given user.
      * @param user User address.
-     * @return uint256 BAL amount to issue for the address.
+     * @return uint256 token amount to issue for the address.
      */
     function integrate_fraction(address user) external view returns (uint256);
 
@@ -43,12 +43,12 @@ interface ILiquidityGauge {
     function is_killed() external view returns (bool);
 
     /**
-     * @notice Kills the gauge so it cannot mint BAL.
+     * @notice Kills the gauge so it cannot mint tokens.
      */
     function killGauge() external;
 
     /**
-     * @notice Unkills the gauge so it can mint BAL again.
+     * @notice Unkills the gauge so it can mint tokens again.
      */
     function unkillGauge() external;
 

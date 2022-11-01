@@ -34,7 +34,7 @@ contract TimelessLiquidityGaugeFactory is BaseGaugeFactory {
      * @param relativeWeightCap The relative weight cap for the created gauge
      * @return The address of the deployed gauge
      */
-    function create(address lpToken, uint256 relativeWeightCap) external override returns (address) {
+    function create(address lpToken, uint256 relativeWeightCap) external returns (address) {
         address gauge = _create();
         ILiquidityGauge(gauge).initialize(lpToken, relativeWeightCap, votingEscrowDelegation, admin);
         return gauge;

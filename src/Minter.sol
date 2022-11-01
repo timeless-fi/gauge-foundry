@@ -12,23 +12,20 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-pragma solidity ^0.7.0;
+pragma solidity ^0.8.0;
 
-import "@balancer-labs/v2-interfaces/contracts/liquidity-mining/IBalancerMinter.sol";
-import "@balancer-labs/v2-interfaces/contracts/liquidity-mining/IBalancerTokenAdmin.sol";
-import "@balancer-labs/v2-interfaces/contracts/liquidity-mining/IGaugeController.sol";
-import "@balancer-labs/v2-interfaces/contracts/liquidity-mining/ILiquidityGauge.sol";
+import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
-import "@balancer-labs/v2-solidity-utils/contracts/openzeppelin/ReentrancyGuard.sol";
-import "@balancer-labs/v2-solidity-utils/contracts/openzeppelin/SafeMath.sol";
-import "@balancer-labs/v2-solidity-utils/contracts/openzeppelin/EIP712.sol";
-import "@balancer-labs/v2-solidity-utils/contracts/helpers/EOASignaturesValidator.sol";
+import {ReentrancyGuard} from "solmate/utils/ReentrancyGuard.sol";
 
-contract Minter is IBalancerMinter, ReentrancyGuard, EOASignaturesValidator {
-    using SafeMath for uint256;
+import {IMinter} from "./interfaces/IMinter.sol";
+import {ITokenAdmin} from "./interfaces/ITokenAdmin.sol";
+import {ILiquidityGauge} from "./interfaces/ILiquidityGauge.sol";
+import {IGaugeController} from "./interfaces/IGaugeController.sol";
 
+contract Minter is IMinter, ReentrancyGuard {
     IERC20 private immutable _token;
-    IBalancerTokenAdmin private immutable _tokenAdmin;
+    ITokenAdmin private immutable _tokenAdmin;
     IGaugeController private immutable _gaugeController;
 
     // user -> gauge -> value
@@ -36,29 +33,25 @@ contract Minter is IBalancerMinter, ReentrancyGuard, EOASignaturesValidator {
     // minter -> user -> can mint?
     mapping(address => mapping(address => bool)) private _allowedMinter;
 
-    // solhint-disable-next-line var-name-mixedcase
-    bytes32 private constant _SET_MINTER_APPROVAL_TYPEHASH =
-        keccak256("SetMinterApproval(address minter,bool approval,uint256 nonce,uint256 deadline)");
-
     event MinterApprovalSet(address indexed user, address indexed minter, bool approval);
 
-    constructor(IBalancerTokenAdmin tokenAdmin, IGaugeController gaugeController) EIP712("Balancer Minter", "1") {
-        _token = tokenAdmin.getBalancerToken();
+    constructor(ITokenAdmin tokenAdmin, IGaugeController gaugeController) {
+        _token = tokenAdmin.getToken();
         _tokenAdmin = tokenAdmin;
         _gaugeController = gaugeController;
     }
 
     /**
-     * @notice Returns the address of the Balancer Governance Token
+     * @notice Returns the address of the minted token
      */
-    function getBalancerToken() external view override returns (IERC20) {
+    function getToken() external view override returns (IERC20) {
         return _token;
     }
 
     /**
-     * @notice Returns the address of the Balancer Token Admin contract
+     * @notice Returns the address of the Token Admin contract
      */
-    function getBalancerTokenAdmin() external view override returns (IBalancerTokenAdmin) {
+    function getTokenAdmin() external view override returns (ITokenAdmin) {
         return _tokenAdmin;
     }
 
@@ -128,27 +121,6 @@ contract Minter is IBalancerMinter, ReentrancyGuard, EOASignaturesValidator {
         _setMinterApproval(minter, msg.sender, approval);
     }
 
-    /**
-     * @notice Set whether `minter` is approved to mint tokens on behalf of `user`, who has signed a message authorizing
-     * them.
-     */
-    function setMinterApprovalWithSignature(
-        address minter,
-        bool approval,
-        address user,
-        uint256 deadline,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) external override {
-        bytes32 structHash =
-            keccak256(abi.encode(_SET_MINTER_APPROVAL_TYPEHASH, minter, approval, getNextNonce(user), deadline));
-
-        _ensureValidSignature(user, structHash, _toArraySignature(v, r, s), deadline, Errors.INVALID_SIGNATURE);
-
-        _setMinterApproval(minter, user, approval);
-    }
-
     function _setMinterApproval(address minter, address user, bool approval) private {
         _allowedMinter[minter][user] = approval;
         emit MinterApprovalSet(user, minter, approval);
@@ -165,8 +137,12 @@ contract Minter is IBalancerMinter, ReentrancyGuard, EOASignaturesValidator {
 
     function _mintForMany(address[] calldata gauges, address user) internal returns (uint256 tokensToMint) {
         uint256 length = gauges.length;
-        for (uint256 i = 0; i < length; ++i) {
-            tokensToMint = tokensToMint.add(_updateGauge(gauges[i], user));
+        for (uint256 i = 0; i < length;) {
+            tokensToMint += _updateGauge(gauges[i], user);
+
+            unchecked {
+                ++i;
+            }
         }
 
         if (tokensToMint > 0) {
@@ -179,7 +155,7 @@ contract Minter is IBalancerMinter, ReentrancyGuard, EOASignaturesValidator {
 
         ILiquidityGauge(gauge).user_checkpoint(user);
         uint256 totalMint = ILiquidityGauge(gauge).integrate_fraction(user);
-        tokensToMint = totalMint.sub(_minted[user][gauge]);
+        tokensToMint = totalMint - _minted[user][gauge];
 
         if (tokensToMint > 0) {
             _minted[user][gauge] = totalMint;
@@ -204,11 +180,15 @@ contract Minter is IBalancerMinter, ReentrancyGuard, EOASignaturesValidator {
      * @param gauges List of `LiquidityGauge` addresses
      */
     function mint_many(address[8] calldata gauges) external override nonReentrant {
-        for (uint256 i = 0; i < 8; ++i) {
+        for (uint256 i = 0; i < 8;) {
             if (gauges[i] == address(0)) {
                 break;
             }
             _mintFor(gauges[i], msg.sender);
+
+            unchecked {
+                ++i;
+            }
         }
     }
 
