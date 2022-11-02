@@ -33,7 +33,7 @@ contract VyperDeployer {
         }
 
         ///@notice check that the deployment was successful
-        require(deployedAddress != address(0), "VyperDeployer could not deploy contract");
+        require(deployedAddress != address(0), string.concat("VyperDeployer could not deploy contract: ", fileName));
 
         ///@notice return the address that the contract was deployed to
         return deployedAddress;
@@ -62,7 +62,7 @@ contract VyperDeployer {
         }
 
         ///@notice check that the deployment was successful
-        require(deployedAddress != address(0), "VyperDeployer could not deploy contract");
+        require(deployedAddress != address(0), string.concat("VyperDeployer could not deploy contract: ", fileName));
 
         ///@notice return the address that the contract was deployed to
         return deployedAddress;
