@@ -48,8 +48,8 @@ abstract contract BaseGaugeFactory {
      * The deployed gauge must be initialized by the caller method.
      * @return The address of the deployed gauge
      */
-    function _create() internal returns (address) {
-        address gauge = Clones.clone(address(_gaugeImplementation));
+    function _create(bytes32 salt) internal returns (address) {
+        address gauge = Clones.cloneDeterministic(address(_gaugeImplementation), salt);
 
         _isGaugeFromFactory[gauge] = true;
         emit GaugeCreated(gauge);

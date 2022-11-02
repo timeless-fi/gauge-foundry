@@ -14,10 +14,14 @@
 
 pragma solidity ^0.8.0;
 
+import {Bytes32AddressLib} from "solmate/utils/Bytes32AddressLib.sol";
+
 import {BaseGaugeFactory} from "./BaseGaugeFactory.sol";
 import {ILiquidityGauge} from "./interfaces/ILiquidityGauge.sol";
 
 contract TimelessLiquidityGaugeFactory is BaseGaugeFactory {
+    using Bytes32AddressLib for address;
+
     address public admin;
     address public votingEscrowDelegation;
 
@@ -35,7 +39,7 @@ contract TimelessLiquidityGaugeFactory is BaseGaugeFactory {
      * @return The address of the deployed gauge
      */
     function create(address lpToken, uint256 relativeWeightCap) external returns (address) {
-        address gauge = _create();
+        address gauge = _create(lpToken.fillLast12Bytes());
         ILiquidityGauge(gauge).initialize(lpToken, relativeWeightCap, votingEscrowDelegation, admin);
         return gauge;
     }
