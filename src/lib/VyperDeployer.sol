@@ -43,7 +43,7 @@ contract VyperDeployer {
     ///@notice If deployment fails, an error will be thrown
     ///@param fileName - The file name of the Vyper contract. For example, the file name for "SimpleStore.vy" is "SimpleStore"
     ///@return deployedAddress - The address that the contract was deployed to
-    function deployContract(string memory fileName, bytes calldata args) public returns (address) {
+    function deployContract(string memory fileName, bytes memory args) public returns (address) {
         ///@notice create a list of strings with the commands necessary to compile Vyper contracts
         string[] memory cmds = new string[](2);
         cmds[0] = "vyper";
