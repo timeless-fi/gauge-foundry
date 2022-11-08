@@ -8,17 +8,13 @@ interface IVotingEscrow {
         uint256 end;
     }
 
-    function commit_transfer_ownership(address addr) external;
+    function change_pending_admin(address addr) external;
 
-    function apply_transfer_ownership() external;
+    function claim_admin() external;
 
     function commit_smart_wallet_checker(address addr) external;
 
     function apply_smart_wallet_checker() external;
-
-    function toggleEmergencyUnlock() external;
-
-    function recoverERC20(address token_addr, uint256 amount) external;
 
     function get_last_user_slope(address addr) external view returns (int128);
 
@@ -71,12 +67,6 @@ interface IVotingEscrow {
 
     function slope_changes(uint256 arg0) external view returns (int128);
 
-    function controller() external view returns (address);
-
-    function transfersEnabled() external view returns (bool);
-
-    function emergencyUnlockActive() external view returns (bool);
-
     function name() external view returns (string memory);
 
     function symbol() external view returns (string memory);
@@ -91,5 +81,5 @@ interface IVotingEscrow {
 
     function admin() external view returns (address);
 
-    function future_admin() external view returns (address);
+    function pending_admin() external view returns (address);
 }

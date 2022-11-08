@@ -8,6 +8,7 @@ import "forge-std/Script.sol";
 import {Minter} from "../src/Minter.sol";
 import {TokenAdmin} from "../src/TokenAdmin.sol";
 import {VyperDeployer} from "../src/lib/VyperDeployer.sol";
+import {SmartWalletChecker} from "../src/SmartWalletChecker.sol";
 import {IVotingEscrow} from "../src/interfaces/IVotingEscrow.sol";
 import {IERC20Mintable} from "../src/interfaces/IERC20Mintable.sol";
 import {ILiquidityGauge} from "../src/interfaces/ILiquidityGauge.sol";
@@ -22,7 +23,8 @@ contract DeployScript is Script, VyperDeployer {
             TokenAdmin tokenAdmin,
             IVotingEscrow votingEscrow,
             IGaugeController gaugeController,
-            TimelessLiquidityGaugeFactory factory
+            TimelessLiquidityGaugeFactory factory,
+            SmartWalletChecker smartWalletChecker
         )
     {
         uint256 deployerPrivateKey = uint256(vm.envBytes32("PRIVATE_KEY"));
@@ -31,6 +33,7 @@ contract DeployScript is Script, VyperDeployer {
         address admin = vm.envAddress("ADMIN");
         IERC20Mintable rewardToken = IERC20Mintable(vm.envAddress("REWARD_TOKEN"));
         BunniHub bunniHub = BunniHub(vm.envAddress("BUNNI_HUB"));
+        address[] memory initialAllowlist = vm.envAddress("INITIAL_ALLOWLIST", ",");
 
         tokenAdmin = new TokenAdmin(rewardToken, admin);
         votingEscrow = IVotingEscrow(
@@ -44,6 +47,11 @@ contract DeployScript is Script, VyperDeployer {
         ILiquidityGauge liquidityGaugeTemplate =
             ILiquidityGauge(deployContract("TimelessLiquidityGauge", abi.encode(minter)));
         factory = new TimelessLiquidityGaugeFactory(liquidityGaugeTemplate, admin, veDelegation, bunniHub);
+        smartWalletChecker = new SmartWalletChecker(admin, initialAllowlist);
+
+        // NOTE: The admin still needs to
+        // - Activate inflation in tokenAdmin
+        // - Add smart wallet checker to votingEscrow
 
         vm.stopBroadcast();
     }

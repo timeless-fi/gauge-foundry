@@ -10,6 +10,7 @@ import {Minter} from "../src/Minter.sol";
 import {TokenAdmin} from "../src/TokenAdmin.sol";
 import {VyperDeployer} from "../src/lib/VyperDeployer.sol";
 import {TestERC20Mintable} from "./mocks/TestERC20Mintable.sol";
+import {SmartWalletChecker} from "../src/SmartWalletChecker.sol";
 import {IVotingEscrow} from "../src/interfaces/IVotingEscrow.sol";
 import {IERC20Mintable} from "../src/interfaces/IERC20Mintable.sol";
 import {ILiquidityGauge} from "../src/interfaces/ILiquidityGauge.sol";
@@ -23,6 +24,7 @@ contract E2ETest is Test, UniswapDeployer {
     address votingEscrowAdmin;
     address veDelegationAdmin;
     address gaugeControllerAdmin;
+    address smartWalletCheckerOwner;
 
     VyperDeployer vyperDeployer;
 
@@ -34,6 +36,7 @@ contract E2ETest is Test, UniswapDeployer {
     IUniswapV3Factory uniswapFactory;
     IGaugeController gaugeController;
     TimelessLiquidityGaugeFactory factory;
+    SmartWalletChecker smartWalletChecker;
 
     function setUp() public {
         // init accounts
@@ -43,6 +46,7 @@ contract E2ETest is Test, UniswapDeployer {
         votingEscrowAdmin = makeAddr("votingEscrowAdmin");
         veDelegationAdmin = makeAddr("veDelegationAdmin");
         gaugeControllerAdmin = makeAddr("gaugeControllerAdmin");
+        smartWalletCheckerOwner = makeAddr("smartWalletCheckerOwner");
 
         // create vyper contract deployer
         vyperDeployer = new VyperDeployer();
@@ -72,6 +76,14 @@ contract E2ETest is Test, UniswapDeployer {
         // activate inflation rewards
         vm.prank(tokenAdminOwner);
         tokenAdmin.activate();
+
+        // set smart wallet checker
+        address[] memory initialAllowedAddresses = new address[](0);
+        smartWalletChecker = new SmartWalletChecker(smartWalletCheckerOwner, initialAllowedAddresses);
+        vm.startPrank(votingEscrowAdmin);
+        votingEscrow.commit_smart_wallet_checker(address(smartWalletChecker));
+        votingEscrow.apply_smart_wallet_checker();
+        vm.stopPrank();
     }
 
     function test_createGauge() external {
