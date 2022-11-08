@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.11;
 
+import "bunni/BunniHub.sol";
+import "bunni/tests/lib/UniswapDeployer.sol";
+
 import "forge-std/Test.sol";
 
 import {Minter} from "../src/Minter.sol";
@@ -13,8 +16,9 @@ import {ILiquidityGauge} from "../src/interfaces/ILiquidityGauge.sol";
 import {IGaugeController} from "../src/interfaces/IGaugeController.sol";
 import {TimelessLiquidityGaugeFactory} from "../src/TimelessLiquidityGaugeFactory.sol";
 
-contract E2ETest is Test {
+contract E2ETest is Test, UniswapDeployer {
     address gaugeAdmin;
+    address bunniHubOwner;
     address tokenAdminOwner;
     address votingEscrowAdmin;
     address veDelegationAdmin;
@@ -23,15 +27,18 @@ contract E2ETest is Test {
     VyperDeployer vyperDeployer;
 
     Minter minter;
+    BunniHub bunniHub;
     TokenAdmin tokenAdmin;
     IERC20Mintable mockToken;
     IVotingEscrow votingEscrow;
+    IUniswapV3Factory uniswapFactory;
     IGaugeController gaugeController;
     TimelessLiquidityGaugeFactory factory;
 
     function setUp() public {
         // init accounts
         gaugeAdmin = makeAddr("gaugeAdmin");
+        bunniHubOwner = makeAddr("bunniHubOwner");
         tokenAdminOwner = makeAddr("tokenAdminOwner");
         votingEscrowAdmin = makeAddr("votingEscrowAdmin");
         veDelegationAdmin = makeAddr("veDelegationAdmin");
@@ -58,7 +65,9 @@ contract E2ETest is Test {
         );
         ILiquidityGauge liquidityGaugeTemplate =
             ILiquidityGauge(vyperDeployer.deployContract("TimelessLiquidityGauge", abi.encode(minter)));
-        factory = new TimelessLiquidityGaugeFactory(liquidityGaugeTemplate, gaugeAdmin, veDelegation);
+        uniswapFactory = IUniswapV3Factory(deployUniswapV3Factory());
+        bunniHub = new BunniHub(uniswapFactory, bunniHubOwner, 0);
+        factory = new TimelessLiquidityGaugeFactory(liquidityGaugeTemplate, gaugeAdmin, veDelegation, bunniHub);
 
         // activate inflation rewards
         vm.prank(tokenAdminOwner);
@@ -66,6 +75,18 @@ contract E2ETest is Test {
     }
 
     function test_createGauge() external {
-        factory.create(address(mockToken), 1 ether);
+        // deploy mock tokens and uniswap pool
+        TestERC20Mintable tokenA = new TestERC20Mintable();
+        TestERC20Mintable tokenB = new TestERC20Mintable();
+        uint24 fee = 500;
+        IUniswapV3Pool pool = IUniswapV3Pool(uniswapFactory.createPool(address(tokenA), address(tokenB), fee));
+        pool.initialize(TickMath.getSqrtRatioAtTick(0));
+
+        // deploy bunni token
+        BunniKey memory key = BunniKey({pool: pool, tickLower: -100, tickUpper: 100});
+        bunniHub.deployBunniToken(key);
+
+        // create gauge
+        factory.create(key, 1 ether);
     }
 }

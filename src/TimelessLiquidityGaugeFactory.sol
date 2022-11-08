@@ -14,6 +14,8 @@
 
 pragma solidity ^0.8.0;
 
+import "bunni/interfaces/IBunniHub.sol";
+
 import {Bytes32AddressLib} from "solmate/utils/Bytes32AddressLib.sol";
 
 import {BaseGaugeFactory} from "./BaseGaugeFactory.sol";
@@ -22,25 +24,37 @@ import {ILiquidityGauge} from "./interfaces/ILiquidityGauge.sol";
 contract TimelessLiquidityGaugeFactory is BaseGaugeFactory {
     using Bytes32AddressLib for address;
 
-    address public admin;
-    address public votingEscrowDelegation;
+    error TimelessLiquidityGaugeFactory__InvalidBunniKey();
 
-    constructor(ILiquidityGauge gaugeTemplate, address admin_, address votingEscrowDelegation_)
-        BaseGaugeFactory(gaugeTemplate)
-    {
-        admin = admin_;
+    address public immutable gaugeAdmin;
+    IBunniHub public immutable bunniHub;
+    address public immutable votingEscrowDelegation;
+
+    constructor(
+        ILiquidityGauge gaugeTemplate,
+        address gaugeAdmin_,
+        address votingEscrowDelegation_,
+        IBunniHub bunniHub_
+    ) BaseGaugeFactory(gaugeTemplate) {
+        bunniHub = bunniHub_;
+        gaugeAdmin = gaugeAdmin_;
         votingEscrowDelegation = votingEscrowDelegation_;
     }
 
     /**
      * @notice Deploys a new gauge.
-     * @param lpToken The address of the LP token for which to deploy a gauge
+     * @param key The Bunni key of the LP token for which to deploy a gauge
      * @param relativeWeightCap The relative weight cap for the created gauge
      * @return The address of the deployed gauge
      */
-    function create(address lpToken, uint256 relativeWeightCap) external returns (address) {
+    function create(BunniKey calldata key, uint256 relativeWeightCap) external returns (address) {
+        address lpToken = address(bunniHub.getBunniToken(key));
+        if (lpToken == address(0)) {
+            revert TimelessLiquidityGaugeFactory__InvalidBunniKey();
+        }
+
         address gauge = _create(lpToken.fillLast12Bytes());
-        ILiquidityGauge(gauge).initialize(lpToken, relativeWeightCap, votingEscrowDelegation, admin);
+        ILiquidityGauge(gauge).initialize(lpToken, relativeWeightCap, votingEscrowDelegation, gaugeAdmin);
         return gauge;
     }
 }

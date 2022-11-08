@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
+import "bunni/BunniHub.sol";
+
 import "forge-std/Script.sol";
 
 import {Minter} from "../src/Minter.sol";
@@ -28,6 +30,7 @@ contract DeployScript is Script, VyperDeployer {
 
         address admin = vm.envAddress("ADMIN");
         IERC20Mintable rewardToken = IERC20Mintable(vm.envAddress("REWARD_TOKEN"));
+        BunniHub bunniHub = BunniHub(vm.envAddress("BUNNI_HUB"));
 
         tokenAdmin = new TokenAdmin(rewardToken, admin);
         votingEscrow = IVotingEscrow(
@@ -40,7 +43,7 @@ contract DeployScript is Script, VyperDeployer {
         );
         ILiquidityGauge liquidityGaugeTemplate =
             ILiquidityGauge(deployContract("TimelessLiquidityGauge", abi.encode(minter)));
-        factory = new TimelessLiquidityGaugeFactory(liquidityGaugeTemplate, admin, veDelegation);
+        factory = new TimelessLiquidityGaugeFactory(liquidityGaugeTemplate, admin, veDelegation, bunniHub);
 
         vm.stopBroadcast();
     }
