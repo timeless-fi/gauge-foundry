@@ -3,10 +3,9 @@ pragma solidity ^0.8.13;
 
 import "bunni/BunniHub.sol";
 
-import "forge-std/Script.sol";
-
 import {Minter} from "../src/Minter.sol";
 import {TokenAdmin} from "../src/TokenAdmin.sol";
+import {CREATE3Script} from "./base/CREATE3Script.sol";
 import {VyperDeployer} from "../src/lib/VyperDeployer.sol";
 import {SmartWalletChecker} from "../src/SmartWalletChecker.sol";
 import {IVotingEscrow} from "../src/interfaces/IVotingEscrow.sol";
@@ -15,7 +14,7 @@ import {ILiquidityGauge} from "../src/interfaces/ILiquidityGauge.sol";
 import {IGaugeController} from "../src/interfaces/IGaugeController.sol";
 import {TimelessLiquidityGaugeFactory} from "../src/TimelessLiquidityGaugeFactory.sol";
 
-contract DeployScript is Script, VyperDeployer {
+contract DeployScript is CREATE3Script("1.0.0"), VyperDeployer {
     function run()
         public
         returns (
@@ -31,23 +30,71 @@ contract DeployScript is Script, VyperDeployer {
         vm.startBroadcast(deployerPrivateKey);
 
         address admin = vm.envAddress("ADMIN");
-        IERC20Mintable rewardToken = IERC20Mintable(vm.envAddress("REWARD_TOKEN"));
-        BunniHub bunniHub = BunniHub(vm.envAddress("BUNNI_HUB"));
-        address[] memory initialAllowlist = vm.envAddress("INITIAL_ALLOWLIST", ",");
 
-        tokenAdmin = new TokenAdmin(rewardToken, admin);
-        votingEscrow = IVotingEscrow(
-            deployContract("VotingEscrow", abi.encode(rewardToken, "Timeless Voting Escrow", "veTIT", admin))
+        {
+            IERC20Mintable rewardToken = IERC20Mintable(getCreate3Contract("TimelessToken"));
+            tokenAdmin = TokenAdmin(
+                create3.deploy(
+                    getCreate3ContractSalt("TokenAdmin"),
+                    bytes.concat(type(TokenAdmin).creationCode, abi.encode(rewardToken, admin))
+                )
+            );
+            votingEscrow = IVotingEscrow(
+                create3.deploy(
+                    getCreate3ContractSalt("VotingEscrow"),
+                    bytes.concat(
+                        compileContract("VotingEscrow"),
+                        abi.encode(rewardToken, "Timeless Voting Escrow", "veTIT", admin)
+                    )
+                )
+            );
+        }
+        gaugeController = IGaugeController(
+            create3.deploy(
+                getCreate3ContractSalt("GaugeController"),
+                bytes.concat(compileContract("GaugeController"), abi.encode(votingEscrow, admin))
+            )
         );
-        gaugeController = IGaugeController(deployContract("GaugeController", abi.encode(votingEscrow, admin)));
-        minter = new Minter(tokenAdmin, gaugeController);
-        address veDelegation = deployContract(
-            "VotingEscrowDelegation", abi.encode(votingEscrow, "Timeless VE-Delegation", "veTIT-BOOST", "", admin)
+        minter = Minter(
+            create3.deploy(
+                getCreate3ContractSalt("Minter"),
+                bytes.concat(type(Minter).creationCode, abi.encode(tokenAdmin, gaugeController))
+            )
         );
-        ILiquidityGauge liquidityGaugeTemplate =
-            ILiquidityGauge(deployContract("TimelessLiquidityGauge", abi.encode(minter)));
-        factory = new TimelessLiquidityGaugeFactory(liquidityGaugeTemplate, admin, veDelegation, bunniHub);
-        smartWalletChecker = new SmartWalletChecker(admin, initialAllowlist);
+        address veDelegation = create3.deploy(
+            getCreate3ContractSalt("VotingEscrowDelegation"),
+            bytes.concat(
+                compileContract("VotingEscrowDelegation"),
+                abi.encode(votingEscrow, "Timeless VE-Delegation", "veTIT-BOOST", "", admin)
+            )
+        );
+        ILiquidityGauge liquidityGaugeTemplate = ILiquidityGauge(
+            create3.deploy(
+                getCreate3ContractSalt("TimelessLiquidityGauge"),
+                bytes.concat(compileContract("TimelessLiquidityGauge"), abi.encode(minter))
+            )
+        );
+        {
+            BunniHub bunniHub = BunniHub(vm.envAddress("BUNNI_HUB"));
+            factory = TimelessLiquidityGaugeFactory(
+                create3.deploy(
+                    getCreate3ContractSalt("TimelessLiquidityGaugeFactory"),
+                    bytes.concat(
+                        type(TimelessLiquidityGaugeFactory).creationCode,
+                        abi.encode(liquidityGaugeTemplate, admin, veDelegation, bunniHub)
+                    )
+                )
+            );
+        }
+        {
+            address[] memory initialAllowlist = vm.envAddress("INITIAL_ALLOWLIST", ",");
+            smartWalletChecker = SmartWalletChecker(
+                create3.deploy(
+                    getCreate3ContractSalt("SmartWalletChecker"),
+                    bytes.concat(type(SmartWalletChecker).creationCode, abi.encode(admin, initialAllowlist))
+                )
+            );
+        }
 
         // NOTE: The admin still needs to
         // - Activate inflation in tokenAdmin

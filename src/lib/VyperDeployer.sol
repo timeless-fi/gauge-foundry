@@ -67,4 +67,14 @@ contract VyperDeployer {
         ///@notice return the address that the contract was deployed to
         return deployedAddress;
     }
+
+    function compileContract(string memory fileName) public returns (bytes memory bytecode) {
+        ///@notice create a list of strings with the commands necessary to compile Vyper contracts
+        string[] memory cmds = new string[](2);
+        cmds[0] = "vyper";
+        cmds[1] = string.concat("vyper_contracts/", fileName, ".vy");
+
+        ///@notice compile the Vyper contract and return the bytecode
+        bytecode = cheatCodes.ffi(cmds);
+    }
 }
