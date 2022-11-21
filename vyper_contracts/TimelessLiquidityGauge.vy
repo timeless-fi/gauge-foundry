@@ -77,6 +77,9 @@ event NewPendingAdmin:
 event NewAdmin:
     new_admin: address
 
+event NewTokenlessProduction:
+    new_tokenless_production: uint8
+
 struct Reward:
     token: address
     distributor: address
@@ -102,6 +105,8 @@ MINTER: immutable(address)
 VOTING_ESCROW: immutable(address)
 
 MAX_RELATIVE_WEIGHT_CAP: constant(uint256) = 10 ** 18
+
+tokenless_production: public(uint8)
 
 pending_admin: public(address)
 admin: public(address)
@@ -350,9 +355,10 @@ def _update_liquidity_limit(addr: address, l: uint256, L: uint256):
     voting_balance: uint256 = self._voting_balance_of(addr)
     voting_total: uint256 = ERC20(VOTING_ESCROW).totalSupply()
 
-    lim: uint256 = 0
+    _tokenless_production: uint256 = convert(self.tokenless_production, uint256)
+    lim: uint256 = l * _tokenless_production / 100 # component based on user liquidity
     if voting_total > 0:
-        lim = L * voting_balance / voting_total
+        lim += L * voting_balance / voting_total * (100 - _tokenless_production) / 100 # component based on vote locked tokens
 
     lim = min(l, lim)
     old_bal: uint256 = self.working_balances[addr]
@@ -644,7 +650,7 @@ def kick(addr: address):
     _balance: uint256 = self.balanceOf[addr]
 
     assert ERC20(VOTING_ESCROW).balanceOf(addr) == 0 or t_ve > t_last # dev: kick not allowed
-    assert self.working_balances[addr] > 0  # dev: kick not needed
+    assert self.working_balances[addr] > _balance * convert(self.tokenless_production, uint256) / 100  # dev: kick not needed
 
     self._checkpoint(addr)
     self._update_liquidity_limit(addr, self.balanceOf[addr], self.totalSupply)
@@ -723,6 +729,7 @@ def set_reward_distributor(_reward_token: address, _distributor: address):
     self.reward_data[_reward_token].distributor = _distributor
     log RewardDistributorUpdated(_reward_token, _distributor)
 
+
 @external
 def killGauge():
     """
@@ -731,6 +738,7 @@ def killGauge():
     assert msg.sender == self.admin  # dev: only owner
 
     self.is_killed = True
+
 
 @external
 def unkillGauge():
@@ -748,7 +756,7 @@ def change_pending_admin(new_pending_admin: address):
     @notice Change pending_admin to `new_pending_admin`
     @param new_pending_admin The new pending_admin address
     """
-    assert msg.sender == self.admin
+    assert msg.sender == self.admin # dev: only owner
 
     self.pending_admin = new_pending_admin
 
@@ -760,12 +768,28 @@ def claim_admin():
     """
     @notice Called by pending_admin to set admin to pending_admin
     """
-    assert msg.sender == self.pending_admin
+    assert msg.sender == self.pending_admin # dev: only pending admin
 
     self.admin = msg.sender
     self.pending_admin = empty(address)
 
     log NewAdmin(msg.sender)
+
+
+@external
+def set_tokenless_production(new_tokenless_production: uint8):
+    """
+    @notice Updates the tokenless production weight, which affects how
+    much staking weight is given to liquidity and how much is given to
+    vote locked tokens.
+    @param new_tokenless_production The new tokenless_production value
+    """
+    assert msg.sender == self.admin # dev: only owner
+    assert new_tokenless_production <= 100 # dev: has to be between 0 and 100
+
+    self.tokenless_production = new_tokenless_production
+
+    log NewTokenlessProduction(new_tokenless_production)
 
 
 # View Methods
