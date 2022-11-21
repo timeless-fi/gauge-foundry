@@ -32,19 +32,21 @@ contract DeployScript is CREATE3Script("1.0.0"), VyperDeployer {
         address admin = vm.envAddress("ADMIN");
 
         {
-            IERC20Mintable rewardToken = IERC20Mintable(getCreate3Contract("TimelessToken"));
+            IERC20Mintable rewardToken = IERC20Mintable(getCreate3Contract("OptionsToken"));
             tokenAdmin = TokenAdmin(
                 create3.deploy(
                     getCreate3ContractSalt("TokenAdmin"),
                     bytes.concat(type(TokenAdmin).creationCode, abi.encode(rewardToken, admin))
                 )
             );
+        }
+        {
+            address lockToken = vm.envAddress("LOCK_TOKEN");
             votingEscrow = IVotingEscrow(
                 create3.deploy(
                     getCreate3ContractSalt("VotingEscrow"),
                     bytes.concat(
-                        compileContract("VotingEscrow"),
-                        abi.encode(rewardToken, "Timeless Voting Escrow", "veTIT", admin)
+                        compileContract("VotingEscrow"), abi.encode(lockToken, "Timeless Voting Escrow", "veTIT", admin)
                     )
                 )
             );
