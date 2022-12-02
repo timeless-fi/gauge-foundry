@@ -53,7 +53,8 @@ contract E2ETest is Test, UniswapDeployer {
 
         // deploy contracts
         mockToken = IERC20Mintable(address(new TestERC20Mintable()));
-        tokenAdmin = new TokenAdmin(mockToken, tokenAdminOwner);
+        address minterAddress = computeCreateAddress(address(this), 4);
+        tokenAdmin = new TokenAdmin(mockToken, Minter(minterAddress), tokenAdminOwner);
         votingEscrow = IVotingEscrow(
             vyperDeployer.deployContract(
                 "VotingEscrow", abi.encode(mockToken, "Timeless Voting Escrow", "veTIT", votingEscrowAdmin)
@@ -63,6 +64,7 @@ contract E2ETest is Test, UniswapDeployer {
             vyperDeployer.deployContract("GaugeController", abi.encode(votingEscrow, gaugeControllerAdmin))
         );
         minter = new Minter(tokenAdmin, gaugeController);
+        assert(address(minter) == minterAddress);
         address veDelegation = vyperDeployer.deployContract(
             "VotingEscrowDelegation",
             abi.encode(votingEscrow, "Timeless VE-Delegation", "veTIT-BOOST", "", veDelegationAdmin)

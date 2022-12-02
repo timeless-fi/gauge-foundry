@@ -17,6 +17,7 @@ pragma solidity ^0.8.0;
 import {Owned} from "solmate/auth/Owned.sol";
 import {ReentrancyGuard} from "solmate/utils/ReentrancyGuard.sol";
 
+import {IMinter} from "./interfaces/IMinter.sol";
 import {ITokenAdmin} from "./interfaces/ITokenAdmin.sol";
 import {IERC20Mintable} from "./interfaces/IERC20Mintable.sol";
 
@@ -49,8 +50,11 @@ contract TokenAdmin is ITokenAdmin, ReentrancyGuard, Owned {
     uint256 private _startEpochSupply;
     uint256 private _rate;
 
-    constructor(IERC20Mintable token, address owner_) Owned(owner_) {
+    IMinter public immutable minter;
+
+    constructor(IERC20Mintable token, IMinter minter_, address owner_) Owned(owner_) {
         _token = token;
+        minter = minter_;
     }
 
     /**
@@ -76,7 +80,9 @@ contract TokenAdmin is ITokenAdmin, ReentrancyGuard, Owned {
     /**
      * @notice Mint tokens subject to the defined inflation schedule
      */
-    function mint(address to, uint256 amount) external override onlyOwner {
+    function mint(address to, uint256 amount) external override {
+        require(msg.sender == address(minter), "NOT_MINTER");
+
         // Check if we've passed into a new epoch such that we should calculate available supply with a smaller rate.
         if (block.timestamp >= _startEpochTime + RATE_REDUCTION_TIME) {
             _updateMiningParameters();

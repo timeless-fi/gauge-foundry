@@ -36,7 +36,9 @@ contract DeployScript is CREATE3Script("1.0.0"), VyperDeployer {
             tokenAdmin = TokenAdmin(
                 create3.deploy(
                     getCreate3ContractSalt("TokenAdmin"),
-                    bytes.concat(type(TokenAdmin).creationCode, abi.encode(rewardToken, admin))
+                    bytes.concat(
+                        type(TokenAdmin).creationCode, abi.encode(rewardToken, getCreate3Contract("Minter"), admin)
+                    )
                 )
             );
         }
