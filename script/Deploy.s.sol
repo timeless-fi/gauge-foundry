@@ -14,7 +14,9 @@ import {ILiquidityGauge} from "../src/interfaces/ILiquidityGauge.sol";
 import {IGaugeController} from "../src/interfaces/IGaugeController.sol";
 import {TimelessLiquidityGaugeFactory} from "../src/TimelessLiquidityGaugeFactory.sol";
 
-contract DeployScript is CREATE3Script("1.0.0"), VyperDeployer {
+contract DeployScript is CREATE3Script, VyperDeployer {
+    constructor() CREATE3Script(vm.envString("VERSION")) {}
+
     function run()
         public
         returns (
