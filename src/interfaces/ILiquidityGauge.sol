@@ -53,6 +53,11 @@ interface ILiquidityGauge {
     function unkillGauge() external;
 
     /**
+     * @notice Uses the Uniswap Poor oracle to decide whether a gauge is alive
+     */
+    function makeGaugePermissionless() external;
+
+    /**
      * @notice Sets a new relative weight cap for the gauge.
      * The value shall be normalized to 1e18, and not greater than MAX_RELATIVE_WEIGHT_CAP.
      * @param relativeWeightCap New relative weight cap.
@@ -70,6 +75,11 @@ interface ILiquidityGauge {
      */
     function getCappedRelativeWeight(uint256 time) external view returns (uint256);
 
-    function initialize(address lpToken, uint256 relativeWeightCap, address votingEscrowDelegation, address admin)
-        external;
+    function initialize(
+        address lpToken,
+        uint256 relativeWeightCap,
+        address votingEscrowDelegation,
+        address admin,
+        bytes32 positionKey
+    ) external;
 }

@@ -38,6 +38,9 @@ interface VotingEscrow:
 interface VotingEscrowDelegation:
     def adjusted_balance_of(_account: address) -> uint256: view
 
+interface UniswapPoorOracle:
+    def getPositionStateFromKey(key: bytes32) -> uint256: view
+
 
 event Deposit:
     provider: indexed(address)
@@ -103,6 +106,7 @@ TOKEN_ADMIN: immutable(address)
 GAUGE_CONTROLLER: immutable(address)
 MINTER: immutable(address)
 VOTING_ESCROW: immutable(address)
+UNISWAP_POOR_ORACLE: immutable(UniswapPoorOracle)
 
 MAX_RELATIVE_WEIGHT_CAP: constant(uint256) = 10 ** 18
 
@@ -126,8 +130,8 @@ nonces: public(HashMap[address, uint256])
 
 # Gauge
 lp_token: public(address)
-
-is_killed: public(bool)
+gauge_state: public(uint8)
+position_key: public(bytes32)
 
 # [future_epoch_time uint40][inflation_rate uint216]
 inflation_params: uint256
@@ -170,7 +174,7 @@ integrate_inv_supply: public(uint256[100000000000000000000000000000])  # bump ep
 _relative_weight_cap: uint256
 
 @external
-def __init__(minter: address):
+def __init__(minter: address, uniswap_poor_oracle: UniswapPoorOracle):
     """
     @param minter The Minter contract used for minting reward tokens
     """
@@ -180,6 +184,8 @@ def __init__(minter: address):
     GAUGE_CONTROLLER = gaugeController
     MINTER = minter
     VOTING_ESCROW = Controller(gaugeController).voting_escrow()
+    UNISWAP_POOR_ORACLE = uniswap_poor_oracle
+
     # prevent initialization of implementation
     self.lp_token = 0x000000000000000000000000000000000000dEaD
 
@@ -216,7 +222,7 @@ def _checkpoint(addr: address):
         new_rate = TokenAdmin(TOKEN_ADMIN).rate()
         self.inflation_params = shift(TokenAdmin(TOKEN_ADMIN).future_epoch_time_write(), 216) + new_rate
 
-    if self.is_killed:
+    if self._is_killed():
         # Stop distributing inflation as soon as killed
         rate = 0
         new_rate = 0  # prevent distribution when crossing epochs
@@ -731,13 +737,23 @@ def set_reward_distributor(_reward_token: address, _distributor: address):
 
 
 @external
+def makeGaugePermissionless():
+    """
+    @notice Uses the Uniswap Poor oracle to decide whether a gauge is alive
+    """
+    assert msg.sender == self.admin  # dev: only owner
+
+    self.gauge_state = 0 # PERMISSIONLESS
+
+
+@external
 def killGauge():
     """
     @notice Kills the gauge so it always yields a rate of 0 and so cannot mint rewards
     """
     assert msg.sender == self.admin  # dev: only owner
 
-    self.is_killed = True
+    self.gauge_state = 1 # DEAD
 
 
 @external
@@ -747,7 +763,7 @@ def unkillGauge():
     """
     assert msg.sender == self.admin  # dev: only owner
 
-    self.is_killed = False
+    self.gauge_state = 2 # ALIVE
 
 
 @external
@@ -895,6 +911,25 @@ def allowance(owner: address, spender: address) -> uint256:
     return self._allowance[owner][spender]
 
 
+@external
+@view
+def is_killed() -> bool:
+    return self._is_killed()
+
+
+@internal
+@view
+def _is_killed() -> bool:
+    _gauge_state: uint8 = self.gauge_state
+
+    if _gauge_state == 0:
+        # PERMISSIONLESS
+        return UNISWAP_POOR_ORACLE.getPositionStateFromKey(self.position_key) == 2 # PositionState.OUT_OF_RANGE
+    else:
+        # DEAD or ALIVE
+        return _gauge_state == 1 # DEAD
+
+
 # Initializer
 
 @internal
@@ -904,20 +939,21 @@ def _setRelativeWeightCap(relative_weight_cap: uint256):
     log RelativeWeightCapChanged(relative_weight_cap)
 
 @external
-def initialize(_lp_token: address, relative_weight_cap: uint256, _voting_escrow_delegation: address, _admin: address):
+def initialize(_lp_token: address, relative_weight_cap: uint256, _voting_escrow_delegation: address, _admin: address, _position_key: bytes32):
     """
     @notice Contract constructor
     @param _lp_token Liquidity Pool contract address
     @param relative_weight_cap The initial relative weight cap
     @param _voting_escrow_delegation The VotingEscrowDelegation contract used for delegating boosts
     @param _admin The initial admin address
+    @param _position_key The position key of the Uniswap v3 position used by the gauge in the Poor oracle
     """
     assert self.lp_token == empty(address)
 
     self.admin = _admin
     self.lp_token = _lp_token
     self.voting_escrow_delegation = _voting_escrow_delegation
-
+    self.position_key = _position_key
 
     symbol: String[32] = ERC20Extended(_lp_token).symbol()
     name: String[64] = concat("Timeless ", symbol, " Gauge Deposit")

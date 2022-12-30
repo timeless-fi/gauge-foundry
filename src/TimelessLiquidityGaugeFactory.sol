@@ -14,7 +14,7 @@
 
 pragma solidity ^0.8.0;
 
-import "bunni/interfaces/IBunniHub.sol";
+import "bunni/src/interfaces/IBunniHub.sol";
 
 import {Bytes32AddressLib} from "solmate/utils/Bytes32AddressLib.sol";
 
@@ -54,7 +54,9 @@ contract TimelessLiquidityGaugeFactory is BaseGaugeFactory {
         }
 
         address gauge = _create(lpToken.fillLast12Bytes());
-        ILiquidityGauge(gauge).initialize(lpToken, relativeWeightCap, votingEscrowDelegation, gaugeAdmin);
+        ILiquidityGauge(gauge).initialize(
+            lpToken, relativeWeightCap, votingEscrowDelegation, gaugeAdmin, keccak256(abi.encode(key))
+        );
         return gauge;
     }
 }
