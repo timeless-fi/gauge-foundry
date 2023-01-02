@@ -82,4 +82,10 @@ interface ILiquidityGauge {
         address admin,
         bytes32 positionKey
     ) external;
+
+    function change_pending_admin(address newPendingAdmin) external;
+
+    function claim_admin() external;
+
+    function admin() external view returns (address);
 }

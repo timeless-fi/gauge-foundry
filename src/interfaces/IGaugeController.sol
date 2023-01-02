@@ -85,4 +85,8 @@ interface IGaugeController {
     function change_gauge_weight(address, uint256) external;
 
     function vote_for_gauge_weights(address, uint256) external;
+
+    function change_pending_admin(address newPendingAdmin) external;
+
+    function claim_admin() external;
 }

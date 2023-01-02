@@ -25,6 +25,7 @@ import {IVotingEscrow} from "../src/interfaces/IVotingEscrow.sol";
 import {IERC20Mintable} from "../src/interfaces/IERC20Mintable.sol";
 import {ILiquidityGauge} from "../src/interfaces/ILiquidityGauge.sol";
 import {IGaugeController} from "../src/interfaces/IGaugeController.sol";
+import {IVotingEscrowDelegation} from "../src/interfaces/IVotingEscrowDelegation.sol";
 import {TimelessLiquidityGaugeFactory} from "../src/TimelessLiquidityGaugeFactory.sol";
 
 contract E2ETest is Test, UniswapDeployer {
@@ -59,6 +60,7 @@ contract E2ETest is Test, UniswapDeployer {
     IVotingEscrow votingEscrow;
     IUniswapV3Factory uniswapFactory;
     IGaugeController gaugeController;
+    IVotingEscrowDelegation veDelegation;
     TimelessLiquidityGaugeFactory factory;
     SmartWalletChecker smartWalletChecker;
 
@@ -89,16 +91,16 @@ contract E2ETest is Test, UniswapDeployer {
         );
         minter = new Minter(tokenAdmin, gaugeController);
         assert(address(minter) == minterAddress);
-        address veDelegation = vyperDeployer.deployContract(
+        veDelegation = IVotingEscrowDelegation(vyperDeployer.deployContract(
             "VotingEscrowDelegation",
             abi.encode(votingEscrow, "Timeless VE-Delegation", "veTIT-BOOST", "", veDelegationAdmin)
-        );
+        ));
         oracle = new UniswapPoorOracle(IN_RANGE_THRESHOLD, RECORDING_MIN_LENGTH, RECORDING_MAX_LENGTH);
         ILiquidityGauge liquidityGaugeTemplate =
             ILiquidityGauge(vyperDeployer.deployContract("TimelessLiquidityGauge", abi.encode(minter, oracle)));
         uniswapFactory = IUniswapV3Factory(deployUniswapV3Factory());
         bunniHub = new BunniHub(uniswapFactory, bunniHubOwner, 0);
-        factory = new TimelessLiquidityGaugeFactory(liquidityGaugeTemplate, gaugeAdmin, veDelegation, bunniHub);
+        factory = new TimelessLiquidityGaugeFactory(liquidityGaugeTemplate, gaugeAdmin, address(veDelegation), bunniHub);
         weth = new WETH();
         router = new SwapRouter(address(uniswapFactory), address(weth));
 
@@ -305,5 +307,170 @@ contract E2ETest is Test, UniswapDeployer {
 
         // verify gauge state
         assertEq(gauge.is_killed(), false, "Gauge hasn't been unkilled");
+    }
+
+    function test_ownership_gaugeController() external {
+        address newOwner = makeAddr("newOwner");
+
+        // transfer ownership
+        vm.prank(gaugeControllerAdmin);
+        gaugeController.change_pending_admin(newOwner);
+        assertEq(gaugeController.admin(), gaugeControllerAdmin, "change_pending_admin updated admin");
+
+        // claim ownership
+        vm.prank(newOwner);
+        gaugeController.claim_admin();
+        assertEq(gaugeController.admin(), newOwner, "claim_admin didn't update admin");
+    }
+
+    function test_ownership_gaugeController_randoCannotChangePendingAdmin(address rando) external {
+        vm.assume(rando != gaugeControllerAdmin);
+
+        address newOwner = makeAddr("newOwner");
+
+        // transfer ownership
+        vm.prank(rando);
+        vm.expectRevert();
+        gaugeController.change_pending_admin(newOwner);
+    }
+
+    function test_ownership_gaugeController_randoCannotClaimAdmin(address rando) external {
+        address newOwner = makeAddr("newOwner");
+        vm.assume(rando != newOwner);
+
+        // transfer ownership
+        vm.prank(gaugeControllerAdmin);
+        gaugeController.change_pending_admin(newOwner);
+
+        // claim ownership
+        vm.prank(rando);
+        vm.expectRevert();
+        gaugeController.claim_admin();
+    }
+
+    function test_ownership_gauge() external {
+        address newOwner = makeAddr("newOwner");
+
+        // create gauge
+        ILiquidityGauge gauge = ILiquidityGauge(factory.create(key, 1 ether));
+
+        // transfer ownership
+        vm.prank(gaugeAdmin);
+        gauge.change_pending_admin(newOwner);
+        assertEq(gauge.admin(), gaugeAdmin, "change_pending_admin updated admin");
+
+        // claim ownership
+        vm.prank(newOwner);
+        gauge.claim_admin();
+        assertEq(gauge.admin(), newOwner, "claim_admin didn't update admin");
+    }
+
+    function test_ownership_gauge_randoCannotChangePendingAdmin(address rando) external {
+        vm.assume(rando != gaugeAdmin);
+
+        address newOwner = makeAddr("newOwner");
+
+        // create gauge
+        ILiquidityGauge gauge = ILiquidityGauge(factory.create(key, 1 ether));
+
+        // transfer ownership
+        vm.prank(rando);
+        vm.expectRevert();
+        gauge.change_pending_admin(newOwner);
+    }
+
+    function test_ownership_gauge_randoCannotClaimAdmin(address rando) external {
+        address newOwner = makeAddr("newOwner");
+        vm.assume(rando != newOwner);
+
+        // create gauge
+        ILiquidityGauge gauge = ILiquidityGauge(factory.create(key, 1 ether));
+
+        // transfer ownership
+        vm.prank(gaugeAdmin);
+        gauge.change_pending_admin(newOwner);
+
+        // claim ownership
+        vm.prank(rando);
+        vm.expectRevert();
+        gauge.claim_admin();
+    }
+
+    function test_ownership_votingEscrow() external {
+        address newOwner = makeAddr("newOwner");
+
+        // transfer ownership
+        vm.prank(votingEscrowAdmin);
+        votingEscrow.change_pending_admin(newOwner);
+        assertEq(votingEscrow.admin(), votingEscrowAdmin, "change_pending_admin updated admin");
+
+        // claim ownership
+        vm.prank(newOwner);
+        votingEscrow.claim_admin();
+        assertEq(votingEscrow.admin(), newOwner, "claim_admin didn't update admin");
+    }
+
+    function test_ownership_votingEscrow_randoCannotChangePendingAdmin(address rando) external {
+        vm.assume(rando != votingEscrowAdmin);
+
+        address newOwner = makeAddr("newOwner");
+
+        // transfer ownership
+        vm.prank(rando);
+        vm.expectRevert();
+        votingEscrow.change_pending_admin(newOwner);
+    }
+
+    function test_ownership_votingEscrow_randoCannotClaimAdmin(address rando) external {
+        address newOwner = makeAddr("newOwner");
+        vm.assume(rando != newOwner);
+
+        // transfer ownership
+        vm.prank(votingEscrowAdmin);
+        votingEscrow.change_pending_admin(newOwner);
+
+        // claim ownership
+        vm.prank(rando);
+        vm.expectRevert();
+        votingEscrow.claim_admin();
+    }
+
+    function test_ownership_veDelegation() external {
+        address newOwner = makeAddr("newOwner");
+
+        // transfer ownership
+        vm.prank(veDelegationAdmin);
+        veDelegation.change_pending_admin(newOwner);
+        assertEq(veDelegation.admin(), veDelegationAdmin, "change_pending_admin updated admin");
+
+        // claim ownership
+        vm.prank(newOwner);
+        veDelegation.claim_admin();
+        assertEq(veDelegation.admin(), newOwner, "claim_admin didn't update admin");
+    }
+
+    function test_ownership_veDelegation_randoCannotChangePendingAdmin(address rando) external {
+        vm.assume(rando != veDelegationAdmin);
+
+        address newOwner = makeAddr("newOwner");
+
+        // transfer ownership
+        vm.prank(rando);
+        vm.expectRevert();
+        veDelegation.change_pending_admin(newOwner);
+    }
+
+    function test_ownership_veDelegation_randoCannotClaimAdmin(address rando) external {
+        address newOwner = makeAddr("newOwner");
+        vm.assume(rando != newOwner);
+
+        // transfer ownership
+        vm.prank(veDelegationAdmin);
+        veDelegation.change_pending_admin(newOwner);
+
+        // claim ownership
+        vm.prank(rando);
+        vm.expectRevert();
+        veDelegation.claim_admin();
     }
 }
