@@ -88,4 +88,12 @@ interface ILiquidityGauge {
     function claim_admin() external;
 
     function admin() external view returns (address);
+
+    function deposit(uint256 amount) external;
+
+    function withdraw(uint256 amount) external;
+
+    function balanceOf(address account) external view returns (uint256);
+
+    function claim_rewards() external;
 }

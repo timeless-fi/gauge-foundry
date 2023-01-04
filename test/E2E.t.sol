@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.11;
 
-import {BunniHub, BunniKey} from "bunni/src/BunniHub.sol";
+import {BunniHub, BunniKey, IBunniToken} from "bunni/src/BunniHub.sol";
 import {IBunniHub} from "bunni/src/interfaces/IBunniHub.sol";
 import {UniswapDeployer} from "bunni/src/tests/lib/UniswapDeployer.sol";
 import {SwapRouter} from "bunni/lib/v3-periphery/contracts/SwapRouter.sol";
@@ -91,10 +91,12 @@ contract E2ETest is Test, UniswapDeployer {
         );
         minter = new Minter(tokenAdmin, gaugeController);
         assert(address(minter) == minterAddress);
-        veDelegation = IVotingEscrowDelegation(vyperDeployer.deployContract(
-            "VotingEscrowDelegation",
-            abi.encode(votingEscrow, "Timeless VE-Delegation", "veTIT-BOOST", "", veDelegationAdmin)
-        ));
+        veDelegation = IVotingEscrowDelegation(
+            vyperDeployer.deployContract(
+                "VotingEscrowDelegation",
+                abi.encode(votingEscrow, "Timeless VE-Delegation", "veTIT-BOOST", "", veDelegationAdmin)
+            )
+        );
         oracle = new UniswapPoorOracle(IN_RANGE_THRESHOLD, RECORDING_MIN_LENGTH, RECORDING_MAX_LENGTH);
         ILiquidityGauge liquidityGaugeTemplate =
             ILiquidityGauge(vyperDeployer.deployContract("TimelessLiquidityGauge", abi.encode(minter, oracle)));
@@ -138,14 +140,23 @@ contract E2ETest is Test, UniswapDeployer {
         vm.prank(tokenAdminOwner);
         tokenAdmin.activate();
 
+        // add gauge type
+        vm.prank(gaugeControllerAdmin);
+        gaugeController.add_type("Ethereum", 1);
+
         // set smart wallet checker
-        address[] memory initialAllowedAddresses = new address[](0);
+        address[] memory initialAllowedAddresses = new address[](1);
+        initialAllowedAddresses[0] = address(this);
         smartWalletChecker = new SmartWalletChecker(smartWalletCheckerOwner, initialAllowedAddresses);
         vm.startPrank(votingEscrowAdmin);
         votingEscrow.commit_smart_wallet_checker(address(smartWalletChecker));
         votingEscrow.apply_smart_wallet_checker();
         vm.stopPrank();
     }
+
+    /**
+     * Gauge creation/kill tests
+     */
 
     function test_createGauge() external {
         // create gauge
@@ -308,6 +319,10 @@ contract E2ETest is Test, UniswapDeployer {
         // verify gauge state
         assertEq(gauge.is_killed(), false, "Gauge hasn't been unkilled");
     }
+
+    /**
+     * Contract ownership tests
+     */
 
     function test_ownership_gaugeController() external {
         address newOwner = makeAddr("newOwner");
@@ -472,5 +487,68 @@ contract E2ETest is Test, UniswapDeployer {
         vm.prank(rando);
         vm.expectRevert();
         veDelegation.claim_admin();
+    }
+
+    /**
+     * Gauge interaction tests
+     */
+
+    function test_gauge_stakeRewards() external {
+        // create gauge
+        ILiquidityGauge gauge = ILiquidityGauge(factory.create(key, 1 ether));
+
+        // approve gauge
+        vm.prank(gaugeControllerAdmin);
+        gaugeController.add_gauge(address(gauge), 0, 1);
+
+        // lock tokens in voting escrow
+        mockToken.mint(address(this), 1 ether);
+        mockToken.approve(address(votingEscrow), type(uint256).max);
+        votingEscrow.create_lock(1 ether, block.timestamp + 200 weeks);
+
+        // stake liquidity
+        IBunniToken bunniToken = bunniHub.getBunniToken(key);
+        bunniToken.approve(address(gauge), type(uint256).max);
+        uint256 amount = bunniToken.balanceOf(address(this));
+        gauge.deposit(amount);
+
+        // wait
+        skip(4 weeks);
+
+        // claim rewards
+        uint256 minted = minter.mint(address(gauge));
+
+        // check balance
+        uint256 expectedAmount = tokenAdmin.INITIAL_RATE() * (3 weeks); // first week has no rewards
+        assertApproxEqRel(minted, expectedAmount, 1e12, "minted incorrect");
+        assertApproxEqRel(mockToken.balanceOf(address(this)), expectedAmount, 1e12, "balance incorrect");
+    }
+
+    function test_gauge_stakeAndUnstake() external {
+        // create gauge
+        ILiquidityGauge gauge = ILiquidityGauge(factory.create(key, 1 ether));
+
+        // approve gauge
+        vm.prank(gaugeControllerAdmin);
+        gaugeController.add_gauge(address(gauge), 0, 1);
+
+        // stake liquidity
+        IBunniToken bunniToken = bunniHub.getBunniToken(key);
+        bunniToken.approve(address(gauge), type(uint256).max);
+        uint256 amount = bunniToken.balanceOf(address(this));
+        gauge.deposit(amount);
+
+        // check balances
+        assertEq(bunniToken.balanceOf(address(this)), 0, "user still has LP tokens after deposit");
+        assertEq(bunniToken.balanceOf(address(gauge)), amount, "LP tokens didn't get transferred to gauge");
+        assertEq(gauge.balanceOf(address(this)), amount, "user didn't get gauge tokens");
+
+        // withdraw liquidity
+        gauge.withdraw(amount);
+
+        // check balances
+        assertEq(bunniToken.balanceOf(address(this)), amount, "user didn't receive LP tokens after withdraw");
+        assertEq(bunniToken.balanceOf(address(gauge)), 0, "gauge still has LP tokens after withdraw");
+        assertEq(gauge.balanceOf(address(this)), 0, "user still has gauge tokens after withdraw");
     }
 }
