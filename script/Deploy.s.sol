@@ -50,7 +50,7 @@ contract DeployScript is CREATE3Script, VyperDeployer {
                 create3.deploy(
                     getCreate3ContractSalt("VotingEscrow"),
                     bytes.concat(
-                        compileContract("VotingEscrow"), abi.encode(lockToken, "Timeless Voting Escrow", "veTIT", admin)
+                        compileContract("VotingEscrow"), abi.encode(lockToken, "Timeless Voting Escrow", "veLIT", admin)
                     )
                 )
             );
@@ -71,13 +71,16 @@ contract DeployScript is CREATE3Script, VyperDeployer {
             getCreate3ContractSalt("VotingEscrowDelegation"),
             bytes.concat(
                 compileContract("VotingEscrowDelegation"),
-                abi.encode(votingEscrow, "Timeless VE-Delegation", "veTIT-BOOST", "", admin)
+                abi.encode(votingEscrow, "Timeless VE-Delegation", "veLIT-BOOST", "", admin)
             )
         );
         ILiquidityGauge liquidityGaugeTemplate = ILiquidityGauge(
             create3.deploy(
                 getCreate3ContractSalt("TimelessLiquidityGauge"),
-                bytes.concat(compileContract("TimelessLiquidityGauge"), abi.encode(minter))
+                bytes.concat(
+                    compileContract("TimelessLiquidityGauge"),
+                    abi.encode(minter, getCreate3Contract("UniswapPoorOracle"))
+                )
             )
         );
         {
