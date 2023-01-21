@@ -1,0 +1,49 @@
+{
+  "transactions": [
+    {
+      "hash": "0x47b2d88a669226e98b3a95992d58a6c75cec68dee5e82cb55d4e3f1bbca8ed81",
+      "transactionType": "CALL",
+      "contractName": "TimelessLiquidityGaugeFactory",
+      "contractAddress": "0x822E5828Cb9C0e2aD2DC5035577E6d63B672D0e2",
+      "function": "create((address,int24,int24),uint256):(address)",
+      "arguments": [
+        "(0x4Be410e2fF6a5F1718ADA572AFA9E8D26537242b, 56160, 71760)",
+        "1000000000000000000"
+      ],
+      "rpc": "https://eth-mainnet.g.alchemy.com/v2/pvGDp1uf8J7QZ7MXpLhYs_SnMnsE0TY5",
+      "transaction": {
+        "type": "0x02",
+        "from": "0xfbe09b7a6c6cc3a72b4ca41cdd9c88ac62bb7937",
+        "to": "0x822e5828cb9c0e2ad2dc5035577e6d63b672d0e2",
+        "gas": "0x86d7a",
+        "value": "0x0",
+        "data": "0xd159244f0000000000000000000000004be410e2ff6a5f1718ada572afa9e8d26537242b000000000000000000000000000000000000000000000000000000000000db6000000000000000000000000000000000000000000000000000000000000118500000000000000000000000000000000000000000000000000de0b6b3a7640000",
+        "nonce": "0x74",
+        "accessList": []
+      },
+      "additionalContracts": [
+        {
+          "transactionType": "CREATE2",
+          "address": "0x13A227b851ed1274e205535b3CF1daF6e2bA1E5a",
+          "initCode": "3d602d80600a3d3981f3363d3d373d3d3d363d7380674a0207c83fe7570701d8cd133337564322a35af43d82803e903d91602b57fd5bf3"
+        }
+      ]
+    }
+  ],
+  "receipts": [],
+  "libraries": [],
+  "pending": [
+    "0x47b2d88a669226e98b3a95992d58a6c75cec68dee5e82cb55d4e3f1bbca8ed81"
+  ],
+  "path": "/Users/zefram/Documents/GitHub/timeless-gauge-foundry/broadcast/DeployGauges.s.sol/1/run-latest.json",
+  "returns": {
+    "gauges": {
+      "internal_type": "contract ILiquidityGauge[]",
+      "value": "[0x13A227b851ed1274e205535b3CF1daF6e2bA1E5a]"
+    }
+  },
+  "timestamp": 1674339608,
+  "chain": 1,
+  "multi": false,
+  "commit": "55d69c0"
+}
