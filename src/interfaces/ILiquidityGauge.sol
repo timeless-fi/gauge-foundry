@@ -91,6 +91,8 @@ interface ILiquidityGauge {
 
     function deposit(uint256 amount) external;
 
+    function deposit(uint256 amount, address recipient) external;
+
     function withdraw(uint256 amount) external;
 
     function balanceOf(address account) external view returns (uint256);
