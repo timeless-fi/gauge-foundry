@@ -49,8 +49,8 @@ def __init__(_token: address, _gas_limit: uint256, _gas_price: uint256, _max_sub
     self.submission_data = shift(_gas_limit, 128) + shift(_gas_price, 64) + _max_submission_cost
     log UpdateSubmissionData([0, 0, 0], [_gas_limit, _gas_price, _max_submission_cost])
 
-    assert ERC20(TOKEN).approve(GATEWAY, max_value(uint256))
-    self.is_approved[TOKEN] = True
+    assert ERC20(_token).approve(GATEWAY, max_value(uint256))
+    self.is_approved[_token] = True
 
     self.owner = msg.sender
     log TransferOwnership(empty(address), msg.sender)
