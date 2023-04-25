@@ -30,6 +30,9 @@ interface Factory:
 
 interface Minter:
     def mint(_gauge: address): nonpayable
+    def getToken() -> address: view
+    def getTokenAdmin() -> address: view
+    def getGaugeController() -> address: view
 
 
 struct InflationParams:
@@ -50,6 +53,7 @@ TOKEN_ADMIN: immutable(address)
 
 
 chain_id: public(uint256)
+is_killed: public(bool)
 bridger: public(address)
 factory: public(address)
 inflation_params: public(InflationParams)
@@ -57,18 +61,16 @@ inflation_params: public(InflationParams)
 last_period: public(uint256)
 total_emissions: public(uint256)
 
-is_killed: public(bool)
-
 
 @external
-def __init__(_token: address, _gauge_controller: address, _minter: address, _token_admin: address):
+def __init__(_minter: address):
     self.factory = 0x000000000000000000000000000000000000dEaD
 
     # assign immutable variables
-    TOKEN = _token
-    GAUGE_CONTROLLER = _gauge_controller
+    TOKEN = Minter(_minter).getToken()
+    TOKEN_ADMIN = Minter(_minter).getTokenAdmin()
+    GAUGE_CONTROLLER = Minter(_minter).getGaugeController()
     MINTER = _minter
-    TOKEN_ADMIN = _token_admin
 
 
 @payable

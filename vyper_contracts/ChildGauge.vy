@@ -78,7 +78,6 @@ VERSION: constant(String[8]) = "v0.1.0"
 
 TOKEN: immutable(address)
 FACTORY: immutable(address)
-VOTING_ESCROW: immutable(address)
 UNISWAP_POOR_ORACLE: immutable(UniswapPoorOracle)
 
 
@@ -86,6 +85,10 @@ DOMAIN_SEPARATOR: public(bytes32)
 nonces: public(HashMap[address, uint256])
 
 tokenless_production: public(uint8)
+gauge_state: public(uint8)
+lp_token: public(address)
+manager: public(address)
+position_key: public(bytes32)
 
 name: public(String[64])
 symbol: public(String[32])
@@ -93,11 +96,6 @@ symbol: public(String[32])
 allowance: public(HashMap[address, HashMap[address, uint256]])
 balanceOf: public(HashMap[address, uint256])
 totalSupply: public(uint256)
-
-lp_token: public(address)
-manager: public(address)
-gauge_state: public(uint8)
-position_key: public(bytes32)
 
 working_balances: public(HashMap[address, uint256])
 working_supply: public(uint256)
@@ -125,12 +123,11 @@ inflation_rate: public(HashMap[uint256, uint256])
 
 
 @external
-def __init__(_token: address, _factory: address, _voting_escrow: address, _uniswap_poor_oracle: UniswapPoorOracle):
+def __init__(_token: address, _factory: address, _uniswap_poor_oracle: UniswapPoorOracle):
     self.lp_token = 0x000000000000000000000000000000000000dEaD
 
     TOKEN = _token
     FACTORY = _factory
-    VOTING_ESCROW = _voting_escrow
     UNISWAP_POOR_ORACLE = _uniswap_poor_oracle
 
 
@@ -194,9 +191,10 @@ def _update_liquidity_limit(_user: address, _user_balance: uint256, _total_suppl
     _tokenless_production: uint256 = convert(self.tokenless_production, uint256)
     working_balance: uint256 = _user_balance * _tokenless_production / 100
 
-    ve_ts: uint256 = ERC20(VOTING_ESCROW).totalSupply()
+    voting_escrow: ERC20 = ERC20(Factory(FACTORY).voting_escrow())
+    ve_ts: uint256 = voting_escrow.totalSupply()
     if ve_ts != 0:
-        working_balance += _total_supply * ERC20(VOTING_ESCROW).balanceOf(_user) / ve_ts * (100 - _tokenless_production) / 100
+        working_balance += _total_supply * voting_escrow.balanceOf(_user) / ve_ts * (100 - _tokenless_production) / 100
         working_balance = min(_user_balance, working_balance)
 
     old_working_balance: uint256 = self.working_balances[_user]
@@ -604,13 +602,14 @@ def kick(addr: address):
     @dev Only if either they had another voting event, or their voting escrow lock expired
     @param addr Address to kick
     """
+    voting_escrow: address = Factory(FACTORY).voting_escrow()
     t_last: uint256 = self.integrate_checkpoint_of[addr]
-    t_ve: uint256 = VotingEscrow(VOTING_ESCROW).user_point_history__ts(
-        addr, VotingEscrow(VOTING_ESCROW).user_point_epoch(addr)
+    t_ve: uint256 = VotingEscrow(voting_escrow).user_point_history__ts(
+        addr, VotingEscrow(voting_escrow).user_point_epoch(addr)
     )
     _balance: uint256 = self.balanceOf[addr]
 
-    assert ERC20(VOTING_ESCROW).balanceOf(addr) == 0 or t_ve > t_last # dev: kick not allowed
+    assert ERC20(voting_escrow).balanceOf(addr) == 0 or t_ve > t_last # dev: kick not allowed
     assert self.working_balances[addr] > _balance * convert(self.tokenless_production, uint256) / 100  # dev: kick not needed
 
     self._checkpoint(addr)
