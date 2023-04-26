@@ -13,3 +13,6 @@
 [submodule "lib/uniswap-poor-oracle"]
 	path = lib/uniswap-poor-oracle
 	url = https://github.com/timeless-fi/uniswap-poor-oracle
+[submodule "lib/ve-beacon"]
+	path = lib/ve-beacon
+	url = https://github.com/timeless-fi/ve-beacon
