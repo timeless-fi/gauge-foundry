@@ -13,4 +13,5 @@ interface IRootGauge {
     function inflation_params() external view returns (uint256 rate, uint256 finish_time);
     function last_period() external view returns (uint256);
     function total_emissions() external view returns (uint256);
+    function set_killed(bool killed) external;
 }

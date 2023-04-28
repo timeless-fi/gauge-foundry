@@ -127,9 +127,8 @@ def deploy_gauge(_key: (address, int24, int24), _manager: address = msg.sender) 
     assert bunni_token != empty(address) # dev: key should correspond to Bunni token
 
     implementation: address = self.get_implementation
-    position_key: bytes32 = keccak256(_abi_encode(chain.id, _key))
     gauge: address = create_minimal_proxy_to(
-        implementation, salt=position_key
+        implementation, salt=keccak256(_abi_encode(chain.id, _key))
     )
 
     self.is_valid_gauge[gauge] = True
@@ -138,7 +137,7 @@ def deploy_gauge(_key: (address, int24, int24), _manager: address = msg.sender) 
     self.get_gauge[idx] = gauge
     self.get_gauge_count = idx + 1
 
-    ChildGauge(gauge).initialize(bunni_token, _manager, position_key)
+    ChildGauge(gauge).initialize(bunni_token, _manager, keccak256(_abi_encode(_key)))
 
     log DeployedGauge(implementation, _key, gauge)
     return gauge

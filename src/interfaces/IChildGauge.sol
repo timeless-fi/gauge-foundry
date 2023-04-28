@@ -42,4 +42,7 @@ interface IChildGauge {
     function deposit(uint256 amount, address recipient) external;
     function withdraw(uint256 amount) external;
     function claim_rewards() external;
+    function is_killed() external view returns (bool);
+    function killGauge() external;
+    function unkillGauge() external;
 }

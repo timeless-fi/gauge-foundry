@@ -289,6 +289,177 @@ contract CrossChainE2ETest is Test, UniswapDeployer {
     }
 
     /**
+     * Gauge creation/kill tests
+     */
+
+    function test_createGauge() external {
+        // create gauge
+        IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, key));
+        IChildGauge childGauge = IChildGauge(childFactory.deploy_gauge(key));
+
+        // verify gauge state
+        assertEq(rootGauge.is_killed(), false, "Root gauge killed at creation");
+        assertEq(childGauge.is_killed(), false, "Child gauge killed at creation");
+    }
+
+    function test_killOutOfRangeGauge() external {
+        // create new position to initialize tickLower in the pool
+        int24 tickLower = 100;
+        int24 tickUpper = 1000;
+        tokenA.mint(address(this), 1e18);
+        tokenB.mint(address(this), 1e18);
+        BunniKey memory k = BunniKey({pool: pool, tickLower: tickLower, tickUpper: tickUpper});
+        bunniHub.deployBunniToken(k);
+        bunniHub.deposit(
+            IBunniHub.DepositParams({
+                key: k,
+                amount0Desired: 1e18,
+                amount1Desired: 1e18,
+                amount0Min: 0,
+                amount1Min: 0,
+                deadline: block.timestamp,
+                recipient: address(this)
+            })
+        );
+
+        // create gauge
+        IChildGauge childGauge = IChildGauge(childFactory.deploy_gauge(k));
+
+        // record
+        oracle.startRecording(address(pool), 100, tickUpper);
+        skip(RECORDING_MIN_LENGTH);
+        UniswapPoorOracle.PositionState state = oracle.finishRecording(address(pool), 100, tickUpper);
+        assertEq(uint256(state), uint256(UniswapPoorOracle.PositionState.OUT_OF_RANGE), "State not OUT_OF_RANGE");
+
+        // verify gauge state
+        assertEq(childGauge.is_killed(), true, "Out-of-range gauge hasn't been killed");
+    }
+
+    function test_reviveInRangeGauge() external {
+        // create gauge
+        IChildGauge childGauge = IChildGauge(childFactory.deploy_gauge(key));
+
+        // make swap to move the price out of range
+        uint256 amountIn = 1e20;
+        tokenA.mint(address(this), amountIn);
+        ISwapRouter.ExactInputSingleParams memory swapParams = ISwapRouter.ExactInputSingleParams({
+            tokenIn: address(tokenA),
+            tokenOut: address(tokenB),
+            fee: FEE,
+            recipient: address(this),
+            deadline: block.timestamp,
+            amountIn: amountIn,
+            amountOutMinimum: 0,
+            sqrtPriceLimitX96: 0
+        });
+        router.exactInputSingle(swapParams);
+        (, int24 tick,,,,,) = pool.slot0();
+        assert(tick > TICK_UPPER || tick < TICK_LOWER);
+
+        // record
+        oracle.startRecording(address(pool), TICK_LOWER, TICK_UPPER);
+        skip(RECORDING_MIN_LENGTH);
+        UniswapPoorOracle.PositionState state = oracle.finishRecording(address(pool), TICK_LOWER, TICK_UPPER);
+        assertEq(uint256(state), uint256(UniswapPoorOracle.PositionState.OUT_OF_RANGE), "State not OUT_OF_RANGE");
+
+        // verify gauge state
+        assertEq(childGauge.is_killed(), true, "Out-of-range gauge hasn't been killed");
+
+        // make swap to move the price back into range
+        swapParams = ISwapRouter.ExactInputSingleParams({
+            tokenIn: address(tokenB),
+            tokenOut: address(tokenA),
+            fee: FEE,
+            recipient: address(this),
+            deadline: block.timestamp,
+            amountIn: tokenB.balanceOf(address(this)),
+            amountOutMinimum: 0,
+            sqrtPriceLimitX96: 0
+        });
+        router.exactInputSingle(swapParams);
+        (, tick,,,,,) = pool.slot0();
+        assert(tick <= TICK_UPPER && tick >= TICK_LOWER);
+
+        // record
+        oracle.startRecording(address(pool), TICK_LOWER, TICK_UPPER);
+        skip(RECORDING_MIN_LENGTH);
+        state = oracle.finishRecording(address(pool), TICK_LOWER, TICK_UPPER);
+        assertEq(uint256(state), uint256(UniswapPoorOracle.PositionState.IN_RANGE), "State not IN_RANGE");
+
+        // verify gauge state
+        assertEq(childGauge.is_killed(), false, "In-range gauge hasn't been revived");
+    }
+
+    function test_adminKillGauge() external {
+        // create gauge
+        IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, key));
+        IChildGauge childGauge = IChildGauge(childFactory.deploy_gauge(key));
+
+        // kill gauge
+        rootGauge.set_killed(true);
+        childGauge.killGauge();
+
+        // verify gauge state
+        assertEq(rootGauge.is_killed(), true, "Root gauge hasn't been killed");
+        assertEq(childGauge.is_killed(), true, "Child gauge hasn't been killed");
+    }
+
+    function test_adminUnkillKilledGauge() external {
+        // create gauge
+        IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, key));
+        IChildGauge childGauge = IChildGauge(childFactory.deploy_gauge(key));
+
+        // kill gauge
+        rootGauge.set_killed(true);
+        childGauge.killGauge();
+
+        // unkill gauge
+        rootGauge.set_killed(false);
+        childGauge.unkillGauge();
+
+        // verify gauge state
+        assertEq(rootGauge.is_killed(), false, "Root gauge hasn't been unkilled");
+        assertEq(childGauge.is_killed(), false, "Child gauge hasn't been unkilled");
+    }
+
+    function test_adminUnkillOutOfRangeGauge() external {
+        // create gauge
+        IChildGauge childGauge = IChildGauge(childFactory.deploy_gauge(key));
+
+        // make swap to move the price out of range
+        uint256 amountIn = 1e20;
+        tokenA.mint(address(this), amountIn);
+        ISwapRouter.ExactInputSingleParams memory swapParams = ISwapRouter.ExactInputSingleParams({
+            tokenIn: address(tokenA),
+            tokenOut: address(tokenB),
+            fee: FEE,
+            recipient: address(this),
+            deadline: block.timestamp,
+            amountIn: amountIn,
+            amountOutMinimum: 0,
+            sqrtPriceLimitX96: 0
+        });
+        router.exactInputSingle(swapParams);
+        (, int24 tick,,,,,) = pool.slot0();
+        assert(tick > TICK_UPPER || tick < TICK_LOWER);
+
+        // record
+        oracle.startRecording(address(pool), TICK_LOWER, TICK_UPPER);
+        skip(RECORDING_MIN_LENGTH);
+        UniswapPoorOracle.PositionState state = oracle.finishRecording(address(pool), TICK_LOWER, TICK_UPPER);
+        assertEq(uint256(state), uint256(UniswapPoorOracle.PositionState.OUT_OF_RANGE), "State not OUT_OF_RANGE");
+
+        // verify gauge state
+        assertEq(childGauge.is_killed(), true, "Out-of-range gauge hasn't been killed");
+
+        // admin unkill gauge
+        childGauge.unkillGauge();
+
+        // verify gauge state
+        assertEq(childGauge.is_killed(), false, "Gauge hasn't been unkilled");
+    }
+
+    /**
      * Internal helpers
      */
 
