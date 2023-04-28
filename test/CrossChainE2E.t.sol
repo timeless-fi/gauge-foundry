@@ -460,6 +460,84 @@ contract CrossChainE2ETest is Test, UniswapDeployer {
     }
 
     /**
+     * Contract ownership tests
+     */
+
+    function test_ownership_rootGaugeFactory() external {
+        address newOwner = makeAddr("newOwner");
+
+        // transfer ownership
+        rootFactory.commit_transfer_ownership(newOwner);
+        assertEq(rootFactory.owner(), address(this), "commit_transfer_ownership updated admin");
+
+        // claim ownership
+        vm.prank(newOwner);
+        rootFactory.accept_transfer_ownership();
+        assertEq(rootFactory.owner(), newOwner, "accept_transfer_ownership didn't update admin");
+    }
+
+    function test_ownership_rootGaugeFactory_randoCannotChangePendingAdmin(address rando) external {
+        vm.assume(rando != address(this));
+
+        address newOwner = makeAddr("newOwner");
+
+        // transfer ownership
+        vm.prank(rando);
+        vm.expectRevert();
+        rootFactory.commit_transfer_ownership(newOwner);
+    }
+
+    function test_ownership_rootGaugeFactory_randoCannotClaimAdmin(address rando) external {
+        address newOwner = makeAddr("newOwner");
+        vm.assume(rando != newOwner);
+
+        // transfer ownership
+        rootFactory.commit_transfer_ownership(newOwner);
+
+        // claim ownership
+        vm.prank(rando);
+        vm.expectRevert();
+        rootFactory.accept_transfer_ownership();
+    }
+
+    function test_ownership_childGaugeFactory() external {
+        address newOwner = makeAddr("newOwner");
+
+        // transfer ownership
+        childFactory.commit_transfer_ownership(newOwner);
+        assertEq(childFactory.owner(), address(this), "commit_transfer_ownership updated admin");
+
+        // claim ownership
+        vm.prank(newOwner);
+        childFactory.accept_transfer_ownership();
+        assertEq(childFactory.owner(), newOwner, "accept_transfer_ownership didn't update admin");
+    }
+
+    function test_ownership_childGaugeFactory_randoCannotChangePendingAdmin(address rando) external {
+        vm.assume(rando != address(this));
+
+        address newOwner = makeAddr("newOwner");
+
+        // transfer ownership
+        vm.prank(rando);
+        vm.expectRevert();
+        childFactory.commit_transfer_ownership(newOwner);
+    }
+
+    function test_ownership_childGaugeFactory_randoCannotClaimAdmin(address rando) external {
+        address newOwner = makeAddr("newOwner");
+        vm.assume(rando != newOwner);
+
+        // transfer ownership
+        childFactory.commit_transfer_ownership(newOwner);
+
+        // claim ownership
+        vm.prank(rando);
+        vm.expectRevert();
+        childFactory.accept_transfer_ownership();
+    }
+
+    /**
      * Internal helpers
      */
 
