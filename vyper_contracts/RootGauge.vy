@@ -89,10 +89,9 @@ def transmit_emissions():
     Minter(MINTER).mint(self)
     minted: uint256 = ERC20(TOKEN).balanceOf(self)
 
-    assert minted != 0  # dev: nothing minted
-    bridger: address = self.bridger
-
-    Bridger(bridger).bridge(TOKEN, self, minted, value=Bridger(bridger).cost())
+    if minted != 0:
+        bridger: address = self.bridger
+        Bridger(bridger).bridge(TOKEN, self, minted, value=Bridger(bridger).cost())
 
 
 @view

@@ -68,7 +68,7 @@ def __init__(_token: address, _owner: address, _bunni_hub: BunniHub):
 
 
 @internal
-def _psuedo_mint(_gauge: address, _user: address):
+def _psuedo_mint(_gauge: address, _user: address) -> uint256:
     assert self.is_valid_gauge[_gauge]  # dev: invalid gauge
 
     assert ChildGauge(_gauge).user_checkpoint(_user)
@@ -87,29 +87,32 @@ def _psuedo_mint(_gauge: address, _user: address):
         self.minted[_user][_gauge] = total_mint
 
         log Minted(_user, _gauge, total_mint)
+    return to_mint
 
 
 @external
 @nonreentrant("lock")
-def mint(_gauge: address):
+def mint(_gauge: address) -> uint256:
     """
     @notice Mint everything which belongs to `msg.sender` and send to them
     @param _gauge `LiquidityGauge` address to get mintable amount from
     """
-    self._psuedo_mint(_gauge, msg.sender)
+    return self._psuedo_mint(_gauge, msg.sender)
 
 
 @external
 @nonreentrant("lock")
-def mint_many(_gauges: address[32]):
+def mint_many(_gauges: address[32]) -> uint256:
     """
     @notice Mint everything which belongs to `msg.sender` across multiple gauges
     @param _gauges List of `LiquidityGauge` addresses
     """
+    minted: uint256 = 0
     for i in range(32):
         if _gauges[i] == empty(address):
             pass
-        self._psuedo_mint(_gauges[i], msg.sender)
+        minted += self._psuedo_mint(_gauges[i], msg.sender)
+    return minted
 
 
 @external
