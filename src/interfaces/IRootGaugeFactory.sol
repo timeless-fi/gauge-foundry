@@ -5,7 +5,9 @@ import "bunni/src/interfaces/IBunniHub.sol";
 
 interface IRootGaugeFactory {
     function transmit_emissions(address _gauge) external;
-    function deploy_gauge(uint256 _chain_id, BunniKey calldata _key) external returns (address);
+    function deploy_gauge(uint256 _chain_id, BunniKey calldata _key, uint256 _relative_weight_cap)
+        external
+        returns (address);
     function set_bridger(uint256 _chain_id, address _bridger) external;
     function set_implementation(address _implementation) external;
     function commit_transfer_ownership(address _future_owner) external;

@@ -14,4 +14,7 @@ interface IRootGauge {
     function last_period() external view returns (uint256);
     function total_emissions() external view returns (uint256);
     function set_killed(bool killed) external;
+    function setRelativeWeightCap(uint256 relativeWeightCap) external;
+    function getRelativeWeightCap() external view returns (uint256);
+    function getCappedRelativeWeight(uint256 time) external view returns (uint256);
 }

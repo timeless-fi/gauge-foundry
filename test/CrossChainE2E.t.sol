@@ -210,11 +210,11 @@ contract CrossChainE2ETest is Test, UniswapDeployer {
      * Gauge interaction tests
      */
 
-    function test_gauge_stakeRewards() external {
-        uint256 numWeeksWait = 4;
+    function test_gauge_stakeRewards(uint256 numWeeksWait) external {
+        numWeeksWait = bound(numWeeksWait, 1, 50);
 
         // create gauge
-        IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, key));
+        IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, key, 1e18));
         IChildGauge childGauge = IChildGauge(childFactory.deploy_gauge(key));
 
         // approve gauge
@@ -253,7 +253,7 @@ contract CrossChainE2ETest is Test, UniswapDeployer {
 
     function test_gauge_stakeAndUnstake() external {
         // create gauge
-        IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, key));
+        IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, key, 1e18));
         IChildGauge childGauge = IChildGauge(childFactory.deploy_gauge(key));
 
         // approve gauge
@@ -288,13 +288,100 @@ contract CrossChainE2ETest is Test, UniswapDeployer {
         assertEq(childGauge.balanceOf(address(this)), 0, "user still has gauge tokens after withdraw");
     }
 
+    function test_gauge_stakeRewards_capped(uint256 numWeeksWait, uint256 weightCap) external {
+        weightCap = bound(weightCap, 1e15, 1e18);
+        numWeeksWait = bound(numWeeksWait, 1, 50);
+
+        // create gauge
+        IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, key, weightCap));
+        IChildGauge childGauge = IChildGauge(childFactory.deploy_gauge(key));
+
+        // approve gauge
+        vm.prank(gaugeControllerAdmin);
+        gaugeController.add_gauge(address(rootGauge), 0, 1);
+
+        // lock tokens in voting escrow
+        mockToken.mint(address(this), 1 ether);
+        mockToken.approve(address(votingEscrow), type(uint256).max);
+        votingEscrow.create_lock(1 ether, block.timestamp + 200 weeks);
+
+        // push vetoken balance from beacon to recipient
+        beacon.broadcastVeBalance(address(this), 0, 0, 0);
+
+        // stake liquidity in child gauge
+        IBunniToken bunniToken = bunniHub.getBunniToken(key);
+        bunniToken.approve(address(childGauge), type(uint256).max);
+        uint256 amount = bunniToken.balanceOf(address(this));
+        childGauge.deposit(amount);
+
+        // claim rewards every week
+        bridger.setRecipient(address(childGauge));
+        // every time `childFactory.mint` is called the rewards
+        // are fully distributed after the current week ends
+        // thus we need to wait one more week
+        for (uint256 i = 0; i < numWeeksWait + 1; i++) {
+            skip(1 weeks);
+            rootFactory.transmit_emissions(address(rootGauge));
+            childFactory.mint(address(childGauge));
+        }
+
+        // check balance
+        uint256 expectedAmount = tokenAdmin.INITIAL_RATE() * (numWeeksWait - 1) * (1 weeks) * weightCap / 1e18; // first week has no rewards
+        assertApproxEqRel(mockToken.balanceOf(address(this)), expectedAmount, 1e12, "balance incorrect");
+    }
+
+    function test_gauge_stakeRewards_setCap(uint256 numWeeksWait, uint256 weightCap) external {
+        weightCap = bound(weightCap, 1e15, 1e18);
+        numWeeksWait = bound(numWeeksWait, 1, 50);
+
+        // create gauge
+        IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, key, 1e18));
+        IChildGauge childGauge = IChildGauge(childFactory.deploy_gauge(key));
+
+        // approve gauge
+        vm.prank(gaugeControllerAdmin);
+        gaugeController.add_gauge(address(rootGauge), 0, 1);
+
+        // lock tokens in voting escrow
+        mockToken.mint(address(this), 1 ether);
+        mockToken.approve(address(votingEscrow), type(uint256).max);
+        votingEscrow.create_lock(1 ether, block.timestamp + 200 weeks);
+
+        // push vetoken balance from beacon to recipient
+        beacon.broadcastVeBalance(address(this), 0, 0, 0);
+
+        // stake liquidity in child gauge
+        IBunniToken bunniToken = bunniHub.getBunniToken(key);
+        bunniToken.approve(address(childGauge), type(uint256).max);
+        uint256 amount = bunniToken.balanceOf(address(this));
+        childGauge.deposit(amount);
+
+        // update gauge cap
+        rootGauge.setRelativeWeightCap(weightCap);
+
+        // claim rewards every week
+        bridger.setRecipient(address(childGauge));
+        // every time `childFactory.mint` is called the rewards
+        // are fully distributed after the current week ends
+        // thus we need to wait one more week
+        for (uint256 i = 0; i < numWeeksWait + 1; i++) {
+            skip(1 weeks);
+            rootFactory.transmit_emissions(address(rootGauge));
+            childFactory.mint(address(childGauge));
+        }
+
+        // check balance
+        uint256 expectedAmount = tokenAdmin.INITIAL_RATE() * (numWeeksWait - 1) * (1 weeks) * weightCap / 1e18; // first week has no rewards
+        assertApproxEqRel(mockToken.balanceOf(address(this)), expectedAmount, 1e12, "balance incorrect");
+    }
+
     /**
      * Gauge creation/kill tests
      */
 
     function test_createGauge() external {
         // create gauge
-        IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, key));
+        IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, key, 1e18));
         IChildGauge childGauge = IChildGauge(childFactory.deploy_gauge(key));
 
         // verify gauge state
@@ -392,7 +479,7 @@ contract CrossChainE2ETest is Test, UniswapDeployer {
 
     function test_adminKillGauge() external {
         // create gauge
-        IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, key));
+        IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, key, 1e18));
         IChildGauge childGauge = IChildGauge(childFactory.deploy_gauge(key));
 
         // kill gauge
@@ -406,7 +493,7 @@ contract CrossChainE2ETest is Test, UniswapDeployer {
 
     function test_adminUnkillKilledGauge() external {
         // create gauge
-        IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, key));
+        IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, key, 1e18));
         IChildGauge childGauge = IChildGauge(childFactory.deploy_gauge(key));
 
         // kill gauge
@@ -535,6 +622,46 @@ contract CrossChainE2ETest is Test, UniswapDeployer {
         vm.prank(rando);
         vm.expectRevert();
         childFactory.accept_transfer_ownership();
+    }
+
+    function test_rootGauge_randoCannotSetRelativeWeightCap(address rando, uint256 weightCap) external {
+        vm.assume(rando != address(this));
+
+        IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, key, 1e18));
+
+        // set cap
+        vm.prank(rando);
+        vm.expectRevert();
+        rootGauge.setRelativeWeightCap(weightCap);
+    }
+
+    function test_rootGauge_relativeWeightCapCannotExceedMax(uint256 weightCap) external {
+        vm.assume(weightCap > 1e18);
+
+        IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, key, 1e18));
+
+        // set cap
+        vm.expectRevert();
+        rootGauge.setRelativeWeightCap(weightCap);
+    }
+
+    function test_rootGauge_updateBridger(address newBridger) external {
+        vm.assume(newBridger != address(bridger));
+
+        IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, key, 1e18));
+
+        // update bridger in factory
+        rootFactory.set_bridger(block.chainid, newBridger);
+
+        // update bridger in gauge
+        rootGauge.update_bridger();
+
+        // verify new bridger
+        assertEq(rootGauge.bridger(), newBridger, "didn't set new bridger in gauge");
+        assertEq(mockToken.allowance(address(rootGauge), address(bridger)), 0, "didn't reset approval to old bridger");
+        assertEq(
+            mockToken.allowance(address(rootGauge), newBridger), type(uint256).max, "didn't set approval to new bridger"
+        );
     }
 
     /**

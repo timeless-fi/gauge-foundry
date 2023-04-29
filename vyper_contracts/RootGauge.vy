@@ -35,11 +35,16 @@ interface Minter:
     def getGaugeController() -> address: view
 
 
+event RelativeWeightCapChanged:
+    new_relative_weight_cap: uint256
+
+
 struct InflationParams:
     rate: uint256
     finish_time: uint256
 
 
+MAX_RELATIVE_WEIGHT_CAP: constant(uint256) = 10 ** 18
 WEEK: constant(uint256) = 604800
 YEAR: constant(uint256) = 86400 * 365
 RATE_DENOMINATOR: constant(uint256) = 10 ** 18
@@ -61,6 +66,7 @@ inflation_params: public(InflationParams)
 last_period: public(uint256)
 total_emissions: public(uint256)
 
+_relative_weight_cap: uint256
 
 @external
 def __init__(_minter: address):
@@ -133,7 +139,7 @@ def user_checkpoint(_user: address) -> bool:
                 # don't calculate emissions for the current period
                 break
             period_time: uint256 = i * WEEK
-            weight: uint256 = GaugeController(GAUGE_CONTROLLER).gauge_relative_weight(self, period_time)
+            weight: uint256 = self._getCappedRelativeWeight(period_time)
 
             if period_time <= params.finish_time and params.finish_time < period_time + WEEK:
                 # calculate with old rate
@@ -188,9 +194,67 @@ def update_bridger():
 
 
 @external
-def initialize(_bridger: address, _chain_id: uint256):
+def setRelativeWeightCap(relative_weight_cap: uint256):
+    """
+    @notice Sets a new relative weight cap for the gauge.
+            The value shall be normalized to 1e18, and not greater than MAX_RELATIVE_WEIGHT_CAP.
+    @param relative_weight_cap New relative weight cap.
+    """
+    assert msg.sender == Factory(self.factory).owner()  # dev: only owner
+    self._setRelativeWeightCap(relative_weight_cap)
+
+
+@external
+@view
+def getRelativeWeightCap() -> uint256:
+    """
+    @notice Returns relative weight cap for the gauge.
+    """
+    return self._relative_weight_cap
+
+
+@external
+@view
+def getCappedRelativeWeight(time: uint256) -> uint256:
+    """
+    @notice Returns the gauge's relative weight for a given time, capped to its _relative_weight_cap attribute.
+    @param time Timestamp in the past or present.
+    """
+    return self._getCappedRelativeWeight(time)
+
+
+@external
+@pure
+def getMaxRelativeWeightCap() -> uint256:
+    """
+    @notice Returns the maximum value that can be set to _relative_weight_cap attribute.
+    """
+    return MAX_RELATIVE_WEIGHT_CAP
+
+
+@internal
+@view
+def _getCappedRelativeWeight(period: uint256) -> uint256:
+    """
+    @dev Returns the gauge's relative weight, capped to its _relative_weight_cap attribute.
+    """
+    return min(GaugeController(GAUGE_CONTROLLER).gauge_relative_weight(self, period), self._relative_weight_cap)
+
+
+@internal
+def _setRelativeWeightCap(relative_weight_cap: uint256):
+    assert relative_weight_cap <= MAX_RELATIVE_WEIGHT_CAP, "Relative weight cap exceeds allowed absolute maximum"
+    self._relative_weight_cap = relative_weight_cap
+    log RelativeWeightCapChanged(relative_weight_cap)
+
+
+@external
+def initialize(_bridger: address, _chain_id: uint256, _relative_weight_cap: uint256):
     """
     @notice Proxy initialization method
+    @param _bridger The initial bridger address
+    @param _chain_id The chainId of the corresponding ChildGauge
+    @param _relative_weight_cap The initial relative weight cap
     """
     assert self.factory == empty(address)  # dev: already initialized
 
@@ -206,5 +270,6 @@ def initialize(_bridger: address, _chain_id: uint256):
 
     self.inflation_params = inflation_params
     self.last_period = block.timestamp / WEEK
+    self._setRelativeWeightCap(_relative_weight_cap)
 
     ERC20(TOKEN).approve(_bridger, max_value(uint256))

@@ -11,7 +11,7 @@ interface Bridger:
 
 interface RootGauge:
     def bridger() -> address: view
-    def initialize(_bridger: address, _chain_id: uint256): nonpayable
+    def initialize(_bridger: address, _chain_id: uint256, _relative_weight_cap: uint256): nonpayable
     def transmit_emissions(): nonpayable
 
 
@@ -67,11 +67,12 @@ def transmit_emissions(_gauge: address):
 
 @payable
 @external
-def deploy_gauge(_chain_id: uint256, _key: (address, int24, int24)) -> address:
+def deploy_gauge(_chain_id: uint256, _key: (address, int24, int24), _relative_weight_cap: uint256) -> address:
     """
     @notice Deploy a root liquidity gauge
     @param _chain_id The chain identifier of the counterpart child gauge
     @param key The BunniKey of the gauge's LP token
+    @param _relative_weight_cap The initial relative weight cap
     """
     bridger: address = self.get_bridger[_chain_id]
     assert bridger != empty(address)  # dev: chain id not supported
@@ -88,7 +89,7 @@ def deploy_gauge(_chain_id: uint256, _key: (address, int24, int24)) -> address:
     self.get_gauge_count[_chain_id] = idx + 1
     self.is_valid_gauge[gauge] = True
 
-    RootGauge(gauge).initialize(bridger, _chain_id)
+    RootGauge(gauge).initialize(bridger, _chain_id, _relative_weight_cap)
 
     log DeployedGauge(implementation, _chain_id, _key, gauge)
     return gauge
