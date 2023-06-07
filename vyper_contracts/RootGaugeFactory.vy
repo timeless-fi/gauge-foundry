@@ -65,6 +65,20 @@ def transmit_emissions(_gauge: address):
     RootGauge(_gauge).transmit_emissions()
 
 
+@external
+def transmit_emissions_multiple(_gauge_list: address[32]):
+    """
+    @notice Call `transmit_emissions` on a list of root gauges
+    @dev Entrypoint to request emissions for a child gauge.
+    """
+    for _gauge in _gauge_list:
+        # in most cases this will return True
+        # for special bridges *cough cough Multichain, we can only do
+        # one bridge per tx, therefore this will verify msg.sender in [tx.origin, self.call_proxy]
+        assert Bridger(RootGauge(_gauge).bridger()).check(msg.sender)
+        RootGauge(_gauge).transmit_emissions()
+
+
 @payable
 @external
 def deploy_gauge(_chain_id: uint256, _key: (address, int24, int24), _relative_weight_cap: uint256) -> address:
