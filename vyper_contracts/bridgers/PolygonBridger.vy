@@ -21,7 +21,7 @@ is_approved: public(HashMap[address, bool])
 @external
 def __init__(_token: address):
     TOKEN = _token
-    assert ERC20(_token).approve(POLYGON_BRIDGE_RECEIVER, max_value(uint256))
+    assert ERC20(_token).approve(POLYGON_BRIDGE_RECEIVER, max_value(uint256), default_return_value=True)
     self.is_approved[_token] = True
 
 
@@ -33,10 +33,10 @@ def bridge(_token: address, _to: address, _amount: uint256):
     @param _to The address to deposit the token to on polygon
     @param _amount The amount of the token to bridge
     """
-    assert ERC20(_token).transferFrom(msg.sender, self, _amount)
+    assert ERC20(_token).transferFrom(msg.sender, self, _amount, default_return_value=True)
 
     if _token != TOKEN and not self.is_approved[_token]:
-        assert ERC20(_token).approve(POLYGON_BRIDGE_RECEIVER, max_value(uint256))
+        assert ERC20(_token).approve(POLYGON_BRIDGE_RECEIVER, max_value(uint256), default_return_value=True)
         self.is_approved[_token] = True
 
     BridgeManager(POLYGON_BRIDGE_MANAGER).depositFor(_to, _token, _abi_encode(_amount))
