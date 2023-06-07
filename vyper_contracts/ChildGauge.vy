@@ -663,6 +663,11 @@ def unkillGauge():
 
     self.gauge_state = 2 # ALIVE
 
+    # update period to prevent distribution of rewards while the gauge was killed
+    period: uint256 = self.period + 1
+    self.period = period
+    self.period_timestamp[period] = block.timestamp
+
 
 @external
 def set_tokenless_production(new_tokenless_production: uint8):

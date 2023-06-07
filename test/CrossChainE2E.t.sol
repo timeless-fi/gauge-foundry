@@ -491,22 +491,58 @@ contract CrossChainE2ETest is Test, UniswapDeployer {
         assertEq(childGauge.is_killed(), true, "Child gauge hasn't been killed");
     }
 
-    function test_adminUnkillKilledGauge() external {
+    function test_adminUnkillKilledGauge(uint256 numWeeksWait) external {
+        numWeeksWait = bound(numWeeksWait, 1, 50);
+
         // create gauge
         IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, key, 1e18));
         IChildGauge childGauge = IChildGauge(childFactory.deploy_gauge(key));
+
+        // approve gauge
+        vm.prank(gaugeControllerAdmin);
+        gaugeController.add_gauge(address(rootGauge), 0, 1);
+        bridger.setRecipient(address(childGauge));
+
+        // lock tokens in voting escrow
+        mockToken.mint(address(this), 1 ether);
+        mockToken.approve(address(votingEscrow), type(uint256).max);
+        votingEscrow.create_lock(1 ether, block.timestamp + 200 weeks);
+
+        // push vetoken balance from beacon to recipient
+        beacon.broadcastVeBalance(address(this), 0, 0, 0);
+
+        // stake liquidity in child gauge
+        IBunniToken bunniToken = bunniHub.getBunniToken(key);
+        bunniToken.approve(address(childGauge), type(uint256).max);
+        uint256 amount = bunniToken.balanceOf(address(this));
+        childGauge.deposit(amount);
 
         // kill gauge
         rootGauge.set_killed(true);
         childGauge.killGauge();
 
+        // wait
+        skip(numWeeksWait * 1 weeks);
+
         // unkill gauge
         rootGauge.set_killed(false);
         childGauge.unkillGauge();
 
+        // claim rewards
+        rootFactory.transmit_emissions(address(rootGauge));
+        childFactory.mint(address(childGauge));
+
+        // claim rewards in the next epoch
+        skip(1 weeks);
+        rootFactory.transmit_emissions(address(rootGauge));
+        childFactory.mint(address(childGauge));
+
         // verify gauge state
         assertEq(rootGauge.is_killed(), false, "Root gauge hasn't been unkilled");
         assertEq(childGauge.is_killed(), false, "Child gauge hasn't been unkilled");
+
+        // check balance
+        assertEq(mockToken.balanceOf(address(this)), 0, "received rewards while gauge was killed");
     }
 
     function test_adminUnkillOutOfRangeGauge() external {
