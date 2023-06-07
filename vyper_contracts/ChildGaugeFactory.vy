@@ -4,6 +4,7 @@
 @license MIT
 @author Curve Finance
 """
+from vyper.interfaces import ERC20
 
 
 interface ChildGauge:
@@ -77,13 +78,7 @@ def _psuedo_mint(_gauge: address, _user: address) -> uint256:
 
     if to_mint != 0:
         # transfer tokens to user
-        response: Bytes[32] = raw_call(
-            TOKEN,
-            _abi_encode(_user, to_mint, method_id=method_id("transfer(address,uint256)")),
-            max_outsize=32,
-        )
-        if len(response) != 0:
-            assert convert(response, bool)
+        assert ERC20(TOKEN).transfer(_user, to_mint, default_return_value=True)
         self.minted[_user][_gauge] = total_mint
 
         log Minted(_user, _gauge, total_mint)
