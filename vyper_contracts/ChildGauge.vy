@@ -56,8 +56,35 @@ event UpdateLiquidityLimit:
     _working_supply: uint256
 
 event NewTokenlessProduction:
-    new_tokenless_production: uint8
+    new_tokenless_production: indexed(uint8)
 
+event NewGaugeState:
+    new_gauge_state: indexed(uint8)
+
+event NewManager:
+    new_manager: indexed(address)
+
+event DepositRewardToken:
+    reward_token: indexed(address)
+    amount: uint256
+
+event Kick:
+    user: indexed(address)
+
+event SetRewardDistributor:
+    reward_token: indexed(address)
+    distributor: indexed(address)
+
+event AddReward:
+    reward_token: indexed(address)
+
+event ClaimRewards:
+    user: indexed(address)
+    receiver: indexed(address)
+
+event SetRewardsReceiver:
+    user: indexed(address)
+    receiver: indexed(address)
 
 struct Reward:
     distributor: address
@@ -543,6 +570,7 @@ def set_rewards_receiver(_receiver: address):
     @param _receiver Receiver address for any rewards claimed via `claim_rewards`
     """
     self.rewards_receiver[msg.sender] = _receiver
+    log SetRewardsReceiver(msg.sender, _receiver)
 
 
 @external
@@ -558,6 +586,7 @@ def claim_rewards(_addr: address = msg.sender, _receiver: address = empty(addres
     if _receiver != empty(address):
         assert _addr == msg.sender  # dev: cannot redirect when claiming for another user
     self._checkpoint_rewards(_addr, self.totalSupply, True, _receiver)
+    log ClaimRewards(_addr, _receiver)
 
 
 @external
@@ -575,6 +604,9 @@ def add_reward(_reward_token: address, _distributor: address):
     self.reward_tokens[reward_count] = _reward_token
     self.reward_count = reward_count + 1
 
+    log AddReward(_reward_token)
+    log SetRewardDistributor(_reward_token, _distributor)
+
 
 @external
 def set_reward_distributor(_reward_token: address, _distributor: address):
@@ -585,6 +617,8 @@ def set_reward_distributor(_reward_token: address, _distributor: address):
     assert _distributor != empty(address)
 
     self.reward_data[_reward_token].distributor = _distributor
+
+    log SetRewardDistributor(_reward_token, _distributor)
 
 
 @external
@@ -608,6 +642,8 @@ def kick(addr: address):
     self._checkpoint(addr)
     self._update_liquidity_limit(addr, self.balanceOf[addr], self.totalSupply)
 
+    log Kick(addr)
+
 
 @external
 @nonreentrant("lock")
@@ -629,12 +665,15 @@ def deposit_reward_token(_reward_token: address, _amount: uint256):
     self.reward_data[_reward_token].last_update = block.timestamp
     self.reward_data[_reward_token].period_finish = block.timestamp + WEEK
 
+    log DepositRewardToken(_reward_token, _amount)
+
 
 @external
 def set_manager(_manager: address):
     assert msg.sender == Factory(FACTORY).owner()
 
     self.manager = _manager
+    log NewManager(_manager)
 
 
 @external
@@ -645,6 +684,7 @@ def makeGaugePermissionless():
     assert msg.sender == Factory(FACTORY).owner() # dev: only owner
 
     self.gauge_state = 0 # PERMISSIONLESS
+    log NewGaugeState(0)
 
 
 @external
@@ -655,6 +695,7 @@ def killGauge():
     assert msg.sender == Factory(FACTORY).owner() # dev: only owner
 
     self.gauge_state = 1 # DEAD
+    log NewGaugeState(1)
 
 
 @external
@@ -670,6 +711,7 @@ def unkillGauge():
     period: uint256 = self.period + 1
     self.period = period
     self.period_timestamp[period] = block.timestamp
+    log NewGaugeState(2)
 
 
 @external
