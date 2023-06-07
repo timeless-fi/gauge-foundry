@@ -234,7 +234,7 @@ def _checkpoint_rewards(_user: address, _total_supply: uint256, _claim: bool, _r
         if duration != 0:
             self.reward_data[token].last_update = last_update
             if _total_supply != 0:
-                integral += duration * self.reward_data[token].rate * 10**18 / _total_supply
+                integral += duration * self.reward_data[token].rate / _total_supply
                 self.reward_data[token].integral = integral
 
         if _user != empty(address):
@@ -525,7 +525,7 @@ def claimable_reward(_user: address, _reward_token: address) -> uint256:
     if total_supply != 0:
         last_update: uint256 = min(block.timestamp, self.reward_data[_reward_token].period_finish)
         duration: uint256 = last_update - self.reward_data[_reward_token].last_update
-        integral += (duration * self.reward_data[_reward_token].rate * 10**18 / total_supply)
+        integral += (duration * self.reward_data[_reward_token].rate / total_supply)
 
     integral_for: uint256 = self.reward_integral_for[_reward_token][_user]
     new_claimable: uint256 = self.balanceOf[_user] * (integral - integral_for) / 10**18
@@ -617,11 +617,11 @@ def deposit_reward_token(_reward_token: address, _amount: uint256):
 
     period_finish: uint256 = self.reward_data[_reward_token].period_finish
     if block.timestamp >= period_finish:
-        self.reward_data[_reward_token].rate = _amount / WEEK
+        self.reward_data[_reward_token].rate = _amount * 10**18 / WEEK
     else:
         remaining: uint256 = period_finish - block.timestamp
-        leftover: uint256 = remaining * self.reward_data[_reward_token].rate
-        self.reward_data[_reward_token].rate = (_amount + leftover) / WEEK
+        leftover: uint256 = remaining * self.reward_data[_reward_token].rate / 10**18
+        self.reward_data[_reward_token].rate = (_amount + leftover) * 10**18 / WEEK
 
     self.reward_data[_reward_token].last_update = block.timestamp
     self.reward_data[_reward_token].period_finish = block.timestamp + WEEK
