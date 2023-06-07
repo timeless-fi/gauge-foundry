@@ -107,6 +107,7 @@ integrate_checkpoint_of: public(HashMap[address, uint256])
 integrate_fraction: public(HashMap[address, uint256])
 integrate_inv_supply: public(HashMap[uint256, uint256])
 integrate_inv_supply_of: public(HashMap[address, uint256])
+last_tokenless_production_of: public(HashMap[address, uint8])
 
 # For tracking external rewards
 reward_count: public(uint256)
@@ -177,6 +178,7 @@ def _checkpoint(_user: address):
     self.integrate_fraction[_user] += working_balance * (integrate_inv_supply - self.integrate_inv_supply_of[_user]) / 10 ** 18
     self.integrate_inv_supply_of[_user] = integrate_inv_supply
     self.integrate_checkpoint_of[_user] = block.timestamp
+    self.last_tokenless_production_of[_user] = self.tokenless_production
 
 
 @internal
@@ -589,7 +591,7 @@ def set_reward_distributor(_reward_token: address, _distributor: address):
 def kick(addr: address):
     """
     @notice Kick `addr` for abusing their boost
-    @dev Only if either they had another voting event, or their voting escrow lock expired
+    @dev Only if either they had another voting event, or their voting escrow lock expired, or tokenless_production has been decreased
     @param addr Address to kick
     """
     voting_escrow: address = Factory(FACTORY).voting_escrow()
@@ -598,9 +600,10 @@ def kick(addr: address):
         addr, VotingEscrow(voting_escrow).user_point_epoch(addr)
     )
     _balance: uint256 = self.balanceOf[addr]
+    _tokenless_production: uint8 = self.tokenless_production
 
-    assert ERC20(voting_escrow).balanceOf(addr) == 0 or t_ve > t_last # dev: kick not allowed
-    assert self.working_balances[addr] > _balance * convert(self.tokenless_production, uint256) / 100  # dev: kick not needed
+    assert ERC20(voting_escrow).balanceOf(addr) == 0 or t_ve > t_last or _tokenless_production < self.last_tokenless_production_of[addr] # dev: kick not allowed
+    assert self.working_balances[addr] > _balance * convert(_tokenless_production, uint256) / 100  # dev: kick not needed
 
     self._checkpoint(addr)
     self._update_liquidity_limit(addr, self.balanceOf[addr], self.totalSupply)

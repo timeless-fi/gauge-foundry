@@ -375,6 +375,81 @@ contract CrossChainE2ETest is Test, UniswapDeployer {
         assertApproxEqRel(mockToken.balanceOf(address(this)), expectedAmount, 1e12, "balance incorrect");
     }
 
+    function test_kickAfterTokenlessProductionChange() public {
+        // address(this) starts with a working balance of 0.2b + 0.9(v/V)B = 0.2 * 0.7B + 0.9 * 0.5B = 0.59B
+        // and has 0.1b + 0.8(v/V)B = 0.1 * 0.7B + 0.8 * 0.5B = 0.47B after tokenless_production is set to 10
+        // which means it has an incentive to abuse the previous boost meaning it should be kicked
+        // in general, kicking should happen when:
+        // - tokenless_production is decreased (i.e. max boost is increased)
+        // - v/V < b/B (i.e. the user doesn't have enough vetokens to achieve max boost)
+        // derivation:
+        // we want the following inequalities to be true
+        // - t_0 * b + (1-t_0)(v/V)B > t_1 * b + (1-t_1)(v/V)B (working balance might decrease after update) => (t_0 - t_1)(v/V) < (t_0 - t_1)(b/B)
+        // - t_0 * b + (1-t_0)(v/V)B < b (working balance not bounded by stake balance) => v/V < b/B
+        // - t_1 * b + (1-t_1)(v/V)B < b (working balance not bounded by stake balance) => v/V < b/B
+        // which is equivalent to:
+        // - t_0 > t_1 (tokenless_production is decreased)
+        // - v/V < b/B (not at max boost)
+
+        // create gauge
+        IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, key, 1e18));
+        IChildGauge childGauge = IChildGauge(childFactory.deploy_gauge(key));
+
+        // approve gauge
+        vm.prank(gaugeControllerAdmin);
+        gaugeController.add_gauge(address(rootGauge), 0, 1);
+
+        // init tokenless production
+        childGauge.set_tokenless_production(20);
+
+        // lock tokens in voting escrow
+        mockToken.mint(address(this), 1 ether);
+        mockToken.approve(address(votingEscrow), type(uint256).max);
+        votingEscrow.create_lock(1 ether, block.timestamp + 200 weeks);
+
+        // lock for another user
+        address tester = makeAddr("tester");
+        vm.prank(smartWalletCheckerOwner);
+        smartWalletChecker.allowlistAddress(tester);
+        vm.startPrank(tester);
+        mockToken.mint(tester, 1 ether);
+        mockToken.approve(address(votingEscrow), type(uint256).max);
+        votingEscrow.create_lock(1 ether, block.timestamp + 200 weeks);
+        vm.stopPrank();
+
+        // push vetoken balance from beacon to recipient
+        beacon.broadcastVeBalance(address(this), 0, 0, 0);
+        beacon.broadcastVeBalance(tester, 0, 0, 0);
+
+        // stake liquidity in child gauge for both this and tester
+        IBunniToken bunniToken = bunniHub.getBunniToken(key);
+        bunniToken.transfer(tester, bunniToken.balanceOf(address(this)) * 3 / 10);
+
+        vm.startPrank(tester);
+        bunniToken.approve(address(childGauge), type(uint256).max);
+        childGauge.deposit(bunniToken.balanceOf(tester));
+        vm.stopPrank();
+
+        bunniToken.approve(address(childGauge), type(uint256).max);
+        childGauge.deposit(bunniToken.balanceOf(address(this)));
+
+        // cannot kick at this point
+        vm.expectRevert();
+        childGauge.kick(address(this));
+
+        // update tokenless production
+        childGauge.set_tokenless_production(10);
+
+        // can kick address(this)
+        uint256 beforeWorkingBalance = childGauge.working_balances(address(this));
+        childGauge.kick(address(this));
+        assertLt(
+            childGauge.working_balances(address(this)),
+            beforeWorkingBalance,
+            "working balance didn't change after kicking"
+        );
+    }
+
     /**
      * Gauge creation/kill tests
      */

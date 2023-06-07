@@ -45,4 +45,6 @@ interface IChildGauge {
     function is_killed() external view returns (bool);
     function killGauge() external;
     function unkillGauge() external;
+    function set_tokenless_production(uint8 new_tokenless_production) external;
+    function kick(address user) external;
 }
