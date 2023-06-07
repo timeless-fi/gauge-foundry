@@ -39,9 +39,6 @@ event TransferOwnership:
     _new_owner: address
 
 
-WEEK: constant(uint256) = 86400 * 7
-
-
 TOKEN: immutable(address)
 BUNNI_HUB: immutable(BunniHub)
 
