@@ -111,7 +111,7 @@ def mint_many(_gauges: address[32]) -> uint256:
 
 
 @external
-def deploy_gauge(_key: (address, int24, int24), _manager: address = msg.sender) -> address:
+def deploy_gauge(_key: (address, int24, int24)) -> address:
     """
     @notice Deploy a liquidity gauge
     @param _key The BunniKey of the gauge's LP token
@@ -132,7 +132,7 @@ def deploy_gauge(_key: (address, int24, int24), _manager: address = msg.sender) 
     self.get_gauge[idx] = gauge
     self.get_gauge_count = idx + 1
 
-    ChildGauge(gauge).initialize(bunni_token, _manager, keccak256(_abi_encode(_key)))
+    ChildGauge(gauge).initialize(bunni_token, self.owner, keccak256(_abi_encode(_key)))
 
     log DeployedGauge(implementation, _key, gauge)
     return gauge
