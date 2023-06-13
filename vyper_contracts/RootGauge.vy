@@ -38,6 +38,9 @@ interface Minter:
 event RelativeWeightCapChanged:
     new_relative_weight_cap: uint256
 
+event SetKilled:
+    is_killed: bool
+
 
 struct InflationParams:
     rate: uint256
@@ -178,6 +181,8 @@ def set_killed(_is_killed: bool):
         })
         self.last_period = block.timestamp / WEEK
     self.is_killed = _is_killed
+
+    log SetKilled(_is_killed)
 
 
 @external

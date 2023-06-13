@@ -31,7 +31,7 @@ def __init__(_token: address, _l2_token: address):
     TOKEN = _token
     L2_TOKEN = _l2_token
 
-    assert ERC20(_token).approve(OPTIMISM_L1_BRIDGE, max_value(uint256))
+    assert ERC20(_token).approve(OPTIMISM_L1_BRIDGE, max_value(uint256), default_return_value=True)
     self.l2_token[_token] = _l2_token
 
     self.owner = msg.sender
@@ -46,7 +46,7 @@ def bridge(_token: address, _to: address, _amount: uint256):
     @param _to The address to deposit the token to on L2
     @param _amount The amount of the token to deposit
     """
-    assert ERC20(_token).transferFrom(msg.sender, self, _amount)
+    assert ERC20(_token).transferFrom(msg.sender, self, _amount, default_return_value=True)
 
     l2_token: address = L2_TOKEN
     if _token != TOKEN:
@@ -99,7 +99,7 @@ def set_l2_token(_l1_token: address, _l2_token: address):
     amount: uint256 = 0
     if _l2_token != empty(address):
         amount = max_value(uint256)
-    assert ERC20(_l1_token).approve(OPTIMISM_L1_BRIDGE, amount)
+    assert ERC20(_l1_token).approve(OPTIMISM_L1_BRIDGE, amount, default_return_value=True)
 
     log UpdateTokenMapping(_l1_token, self.l2_token[_l1_token], _l2_token)
     self.l2_token[_l1_token] = _l2_token

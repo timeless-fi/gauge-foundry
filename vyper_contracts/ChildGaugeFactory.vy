@@ -4,6 +4,7 @@
 @license MIT
 @author Curve Finance
 """
+from vyper.interfaces import ERC20
 
 
 interface ChildGauge:
@@ -36,9 +37,6 @@ event UpdateVotingEscrow:
 event TransferOwnership:
     _old_owner: address
     _new_owner: address
-
-
-WEEK: constant(uint256) = 86400 * 7
 
 
 TOKEN: immutable(address)
@@ -77,13 +75,7 @@ def _psuedo_mint(_gauge: address, _user: address) -> uint256:
 
     if to_mint != 0:
         # transfer tokens to user
-        response: Bytes[32] = raw_call(
-            TOKEN,
-            _abi_encode(_user, to_mint, method_id=method_id("transfer(address,uint256)")),
-            max_outsize=32,
-        )
-        if len(response) != 0:
-            assert convert(response, bool)
+        assert ERC20(TOKEN).transfer(_user, to_mint, default_return_value=True)
         self.minted[_user][_gauge] = total_mint
 
         log Minted(_user, _gauge, total_mint)
@@ -116,7 +108,7 @@ def mint_many(_gauges: address[32]) -> uint256:
 
 
 @external
-def deploy_gauge(_key: (address, int24, int24), _manager: address = msg.sender) -> address:
+def deploy_gauge(_key: (address, int24, int24)) -> address:
     """
     @notice Deploy a liquidity gauge
     @param _key The BunniKey of the gauge's LP token
@@ -137,7 +129,7 @@ def deploy_gauge(_key: (address, int24, int24), _manager: address = msg.sender) 
     self.get_gauge[idx] = gauge
     self.get_gauge_count = idx + 1
 
-    ChildGauge(gauge).initialize(bunni_token, _manager, keccak256(_abi_encode(_key)))
+    ChildGauge(gauge).initialize(bunni_token, self.owner, keccak256(_abi_encode(_key)))
 
     log DeployedGauge(implementation, _key, gauge)
     return gauge

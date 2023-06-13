@@ -49,7 +49,7 @@ def __init__(_token: address, _gas_limit: uint256, _gas_price: uint256, _max_sub
     self.submission_data = shift(_gas_limit, 128) + shift(_gas_price, 64) + _max_submission_cost
     log UpdateSubmissionData([0, 0, 0], [_gas_limit, _gas_price, _max_submission_cost])
 
-    assert ERC20(_token).approve(GATEWAY, max_value(uint256))
+    assert ERC20(_token).approve(GATEWAY, max_value(uint256), default_return_value=True)
     self.is_approved[_token] = True
 
     self.owner = msg.sender
@@ -65,10 +65,10 @@ def bridge(_token: address, _to: address, _amount: uint256):
     @param _to The address to deposit token to on L2
     @param _amount The amount of `_token` to deposit
     """
-    assert ERC20(_token).transferFrom(msg.sender, self, _amount)
+    assert ERC20(_token).transferFrom(msg.sender, self, _amount, default_return_value=True)
 
     if _token != TOKEN and not self.is_approved[_token]:
-        assert ERC20(_token).approve(GatewayRouter(GATEWAY_ROUTER).getGateway(_token), max_value(uint256))
+        assert ERC20(_token).approve(GatewayRouter(GATEWAY_ROUTER).getGateway(_token), max_value(uint256), default_return_value=True)
         self.is_approved[_token] = True
 
     data: uint256 = self.submission_data

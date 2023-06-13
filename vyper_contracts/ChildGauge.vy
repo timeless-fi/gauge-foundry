@@ -56,8 +56,35 @@ event UpdateLiquidityLimit:
     _working_supply: uint256
 
 event NewTokenlessProduction:
-    new_tokenless_production: uint8
+    new_tokenless_production: indexed(uint8)
 
+event NewGaugeState:
+    new_gauge_state: indexed(uint8)
+
+event NewManager:
+    new_manager: indexed(address)
+
+event DepositRewardToken:
+    reward_token: indexed(address)
+    amount: uint256
+
+event Kick:
+    user: indexed(address)
+
+event SetRewardDistributor:
+    reward_token: indexed(address)
+    distributor: indexed(address)
+
+event AddReward:
+    reward_token: indexed(address)
+
+event ClaimRewards:
+    user: indexed(address)
+    receiver: indexed(address)
+
+event SetRewardsReceiver:
+    user: indexed(address)
+    receiver: indexed(address)
 
 struct Reward:
     distributor: address
@@ -107,6 +134,7 @@ integrate_checkpoint_of: public(HashMap[address, uint256])
 integrate_fraction: public(HashMap[address, uint256])
 integrate_inv_supply: public(HashMap[uint256, uint256])
 integrate_inv_supply_of: public(HashMap[address, uint256])
+last_tokenless_production_of: public(HashMap[address, uint8])
 
 # For tracking external rewards
 reward_count: public(uint256)
@@ -177,6 +205,7 @@ def _checkpoint(_user: address):
     self.integrate_fraction[_user] += working_balance * (integrate_inv_supply - self.integrate_inv_supply_of[_user]) / 10 ** 18
     self.integrate_inv_supply_of[_user] = integrate_inv_supply
     self.integrate_checkpoint_of[_user] = block.timestamp
+    self.last_tokenless_production_of[_user] = self.tokenless_production
 
 
 @internal
@@ -234,7 +263,7 @@ def _checkpoint_rewards(_user: address, _total_supply: uint256, _claim: bool, _r
         if duration != 0:
             self.reward_data[token].last_update = last_update
             if _total_supply != 0:
-                integral += duration * self.reward_data[token].rate * 10**18 / _total_supply
+                integral += duration * self.reward_data[token].rate / _total_supply
                 self.reward_data[token].integral = integral
 
         if _user != empty(address):
@@ -250,17 +279,7 @@ def _checkpoint_rewards(_user: address, _total_supply: uint256, _claim: bool, _r
             if total_claimable > 0:
                 total_claimed: uint256 = claim_data % 2**128
                 if _claim:
-                    response: Bytes[32] = raw_call(
-                        token,
-                        _abi_encode(
-                            receiver,
-                            total_claimable,
-                            method_id=method_id("transfer(address,uint256)")
-                        ),
-                        max_outsize=32,
-                    )
-                    if len(response) != 0:
-                        assert convert(response, bool)
+                    assert ERC20(token).transfer(receiver, total_claimable, default_return_value=True)
                     self.claim_data[_user][token] = total_claimed + total_claimable
                 elif new_claimable > 0:
                     self.claim_data[_user][token] = total_claimed + shift(total_claimable, 128)
@@ -535,7 +554,7 @@ def claimable_reward(_user: address, _reward_token: address) -> uint256:
     if total_supply != 0:
         last_update: uint256 = min(block.timestamp, self.reward_data[_reward_token].period_finish)
         duration: uint256 = last_update - self.reward_data[_reward_token].last_update
-        integral += (duration * self.reward_data[_reward_token].rate * 10**18 / total_supply)
+        integral += (duration * self.reward_data[_reward_token].rate / total_supply)
 
     integral_for: uint256 = self.reward_integral_for[_reward_token][_user]
     new_claimable: uint256 = self.balanceOf[_user] * (integral - integral_for) / 10**18
@@ -551,6 +570,7 @@ def set_rewards_receiver(_receiver: address):
     @param _receiver Receiver address for any rewards claimed via `claim_rewards`
     """
     self.rewards_receiver[msg.sender] = _receiver
+    log SetRewardsReceiver(msg.sender, _receiver)
 
 
 @external
@@ -566,6 +586,7 @@ def claim_rewards(_addr: address = msg.sender, _receiver: address = empty(addres
     if _receiver != empty(address):
         assert _addr == msg.sender  # dev: cannot redirect when claiming for another user
     self._checkpoint_rewards(_addr, self.totalSupply, True, _receiver)
+    log ClaimRewards(_addr, _receiver)
 
 
 @external
@@ -583,6 +604,9 @@ def add_reward(_reward_token: address, _distributor: address):
     self.reward_tokens[reward_count] = _reward_token
     self.reward_count = reward_count + 1
 
+    log AddReward(_reward_token)
+    log SetRewardDistributor(_reward_token, _distributor)
+
 
 @external
 def set_reward_distributor(_reward_token: address, _distributor: address):
@@ -594,12 +618,14 @@ def set_reward_distributor(_reward_token: address, _distributor: address):
 
     self.reward_data[_reward_token].distributor = _distributor
 
+    log SetRewardDistributor(_reward_token, _distributor)
+
 
 @external
 def kick(addr: address):
     """
     @notice Kick `addr` for abusing their boost
-    @dev Only if either they had another voting event, or their voting escrow lock expired
+    @dev Only if either they had another voting event, or their voting escrow lock expired, or tokenless_production has been decreased
     @param addr Address to kick
     """
     voting_escrow: address = Factory(FACTORY).voting_escrow()
@@ -608,12 +634,15 @@ def kick(addr: address):
         addr, VotingEscrow(voting_escrow).user_point_epoch(addr)
     )
     _balance: uint256 = self.balanceOf[addr]
+    _tokenless_production: uint8 = self.tokenless_production
 
-    assert ERC20(voting_escrow).balanceOf(addr) == 0 or t_ve > t_last # dev: kick not allowed
-    assert self.working_balances[addr] > _balance * convert(self.tokenless_production, uint256) / 100  # dev: kick not needed
+    assert ERC20(voting_escrow).balanceOf(addr) == 0 or t_ve > t_last or _tokenless_production < self.last_tokenless_production_of[addr] # dev: kick not allowed
+    assert self.working_balances[addr] > _balance * convert(_tokenless_production, uint256) / 100  # dev: kick not needed
 
     self._checkpoint(addr)
     self._update_liquidity_limit(addr, self.balanceOf[addr], self.totalSupply)
+
+    log Kick(addr)
 
 
 @external
@@ -623,29 +652,20 @@ def deposit_reward_token(_reward_token: address, _amount: uint256):
 
     self._checkpoint_rewards(empty(address), self.totalSupply, False, empty(address))
 
-    response: Bytes[32] = raw_call(
-        _reward_token,
-        _abi_encode(
-            msg.sender,
-            self,
-            _amount,
-            method_id=method_id("transferFrom(address,address,uint256)")
-        ),
-        max_outsize=32,
-    )
-    if len(response) != 0:
-        assert convert(response, bool)
+    assert ERC20(_reward_token).transferFrom(msg.sender, self, _amount, default_return_value=True)
 
     period_finish: uint256 = self.reward_data[_reward_token].period_finish
     if block.timestamp >= period_finish:
-        self.reward_data[_reward_token].rate = _amount / WEEK
+        self.reward_data[_reward_token].rate = _amount * 10**18 / WEEK
     else:
         remaining: uint256 = period_finish - block.timestamp
-        leftover: uint256 = remaining * self.reward_data[_reward_token].rate
-        self.reward_data[_reward_token].rate = (_amount + leftover) / WEEK
+        leftover: uint256 = remaining * self.reward_data[_reward_token].rate / 10**18
+        self.reward_data[_reward_token].rate = (_amount + leftover) * 10**18 / WEEK
 
     self.reward_data[_reward_token].last_update = block.timestamp
     self.reward_data[_reward_token].period_finish = block.timestamp + WEEK
+
+    log DepositRewardToken(_reward_token, _amount)
 
 
 @external
@@ -653,6 +673,7 @@ def set_manager(_manager: address):
     assert msg.sender == Factory(FACTORY).owner()
 
     self.manager = _manager
+    log NewManager(_manager)
 
 
 @external
@@ -663,6 +684,7 @@ def makeGaugePermissionless():
     assert msg.sender == Factory(FACTORY).owner() # dev: only owner
 
     self.gauge_state = 0 # PERMISSIONLESS
+    log NewGaugeState(0)
 
 
 @external
@@ -673,6 +695,7 @@ def killGauge():
     assert msg.sender == Factory(FACTORY).owner() # dev: only owner
 
     self.gauge_state = 1 # DEAD
+    log NewGaugeState(1)
 
 
 @external
@@ -683,6 +706,12 @@ def unkillGauge():
     assert msg.sender == Factory(FACTORY).owner() # dev: only owner
 
     self.gauge_state = 2 # ALIVE
+
+    # update period to prevent distribution of rewards while the gauge was killed
+    period: uint256 = self.period + 1
+    self.period = period
+    self.period_timestamp[period] = block.timestamp
+    log NewGaugeState(2)
 
 
 @external

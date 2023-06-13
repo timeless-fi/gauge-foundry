@@ -22,7 +22,7 @@ def __init__(_token: address, _omni_bridge: address):
     TOKEN = _token
     OMNI_BRIDGE = _omni_bridge
 
-    assert ERC20(_token).approve(_omni_bridge, max_value(uint256))
+    assert ERC20(_token).approve(_omni_bridge, max_value(uint256), default_return_value=True)
     self.is_approved[_token] = True
 
 
@@ -34,10 +34,10 @@ def bridge(_token: address, _to: address, _amount: uint256):
     @param _to The receiver on Gnosis Chain
     @param _amount The amount of `_token` to bridge
     """
-    assert ERC20(_token).transferFrom(msg.sender, self, _amount)
+    assert ERC20(_token).transferFrom(msg.sender, self, _amount, default_return_value=True)
 
     if _token != TOKEN and not self.is_approved[_token]:
-        assert ERC20(_token).approve(OMNI_BRIDGE, max_value(uint256))
+        assert ERC20(_token).approve(OMNI_BRIDGE, max_value(uint256), default_return_value=True)
         self.is_approved[_token] = True
 
     OmniBridge(OMNI_BRIDGE).relayTokens(_token, _to, _amount)
