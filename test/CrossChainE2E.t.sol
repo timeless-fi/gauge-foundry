@@ -140,20 +140,30 @@ contract CrossChainE2ETest is Test, UniswapDeployer {
 
         // deploy root gauge and child gauge factories
         {
-            childFactory = IChildGaugeFactory(
-                vyperDeployer.deployContract("ChildGaugeFactory", abi.encode(mockToken, address(this), bunniHub))
+            IChildGauge childGaugeTemplate = IChildGauge(
+                create3.deploy(
+                    getCreate3ContractSalt("ChildGauge"),
+                    bytes.concat(
+                        vyperDeployer.compileContract("ChildGauge"),
+                        abi.encode(mockToken, getCreate3Contract("ChildGaugeFactory"), oracle)
+                    )
+                )
             );
-            IChildGauge childGaugeTemplate =
-                IChildGauge(vyperDeployer.deployContract("ChildGauge", abi.encode(mockToken, childFactory, oracle)));
-            childFactory.set_implementation(address(childGaugeTemplate));
-
-            // use veRecipient as voting escrow
-            childFactory.set_voting_escrow(address(veRecipient));
+            childFactory = IChildGaugeFactory(
+                create3.deploy(
+                    getCreate3ContractSalt("ChildGaugeFactory"),
+                    bytes.concat(
+                        vyperDeployer.compileContract("ChildGaugeFactory"),
+                        abi.encode(mockToken, address(this), bunniHub, veRecipient, childGaugeTemplate)
+                    )
+                )
+            );
         }
         {
-            rootFactory = IRootGaugeFactory(vyperDeployer.deployContract("RootGaugeFactory", abi.encode(address(this))));
             IRootGauge rootGaugeTemplate = IRootGauge(vyperDeployer.deployContract("RootGauge", abi.encode(minter)));
-            rootFactory.set_implementation(address(rootGaugeTemplate));
+            rootFactory = IRootGaugeFactory(
+                vyperDeployer.deployContract("RootGaugeFactory", abi.encode(address(this), rootGaugeTemplate))
+            );
             bridger = new MockBridger();
             rootFactory.set_bridger(block.chainid, address(bridger));
         }

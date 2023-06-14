@@ -47,9 +47,12 @@ future_owner: public(address)
 
 
 @external
-def __init__(_owner: address):
+def __init__(_owner: address, _implementation: address):
     self.owner = _owner
     log TransferOwnership(empty(address), _owner)
+
+    self.get_implementation = _implementation
+    log UpdateImplementation(empty(address), _implementation)
 
 
 @external

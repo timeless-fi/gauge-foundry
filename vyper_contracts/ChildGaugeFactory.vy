@@ -57,12 +57,18 @@ get_gauge_count: public(uint256)
 get_gauge: public(address[max_value(uint256)])
 
 @external
-def __init__(_token: address, _owner: address, _bunni_hub: BunniHub):
+def __init__(_token: address, _owner: address, _bunni_hub: BunniHub, _voting_escrow: address, _implementation: address):
     TOKEN = _token
     BUNNI_HUB = _bunni_hub
 
     self.owner = _owner
     log TransferOwnership(empty(address), _owner)
+
+    self.voting_escrow = _voting_escrow
+    log UpdateVotingEscrow(empty(address), _voting_escrow)
+
+    self.get_implementation = _implementation
+    log UpdateImplementation(empty(address), _implementation)
 
 
 @internal
