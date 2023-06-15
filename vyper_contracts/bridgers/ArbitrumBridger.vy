@@ -7,14 +7,25 @@ from vyper.interfaces import ERC20
 
 interface GatewayRouter:
     def getGateway(_token: address) -> address: view
-    def outboundTransfer(  # emits DepositInitiated event with Inbox sequence #
+    def outboundTransferCustomRefund(  # emits DepositInitiated event with Inbox sequence #
         _token: address,
+        _refund_to: address,
         _to: address,
         _amount: uint256,
         _max_gas: uint256,
         _gas_price_bid: uint256,
         _data: Bytes[128],  # _max_submission_cost, _extra_data
     ): payable
+    def getOutboundCalldata(
+        _token: address,
+        _from: address,
+        _to: address,
+        _amount: uint256,
+        _data: Bytes[128]
+    ) -> (uint256, uint256): view  # actually returns bytes, but we just need the size
+
+interface Inbox:
+    def calculateRetryableSubmissionFee(_data_length: uint256, _base_fee: uint256) -> uint256: view
 
 
 event TransferOwnership:
@@ -22,16 +33,19 @@ event TransferOwnership:
     _new_owner: address
 
 event UpdateSubmissionData:
-    _old_submission_data: uint256[3]
-    _new_submission_data: uint256[3]
+    _old_submission_data: uint256[2]
+    _new_submission_data: uint256[2]
 
 
 GATEWAY: constant(address) = 0xa3A7B6F88361F48403514059F1F16C8E78d60EeC
 GATEWAY_ROUTER: constant(address) = 0x72Ce9c846789fdB6fC1f34aC4AD25Dd9ef7031ef
+INBOX: constant(address) = 0x4Dbd4fc535Ac27206064B68FfCf827b0A60BAB3f
+
 
 TOKEN: immutable(address)
 
-# [gas_limit uint64][gas_price uint64][max_submission_cost uint64]
+
+# [gas_limit uint128][gas_price uint128]
 submission_data: uint256
 is_approved: public(HashMap[address, bool])
 
@@ -40,20 +54,19 @@ future_owner: public(address)
 
 
 @external
-def __init__(_token: address, _gas_limit: uint256, _gas_price: uint256, _max_submission_cost: uint256):
-    for value in [_gas_limit, _gas_price, _max_submission_cost]:
-        assert value < 2 ** 64
+def __init__(_token: address, _gas_limit: uint256, _gas_price: uint256, _owner: address):
+    for value in [_gas_limit, _gas_price]:
+        assert value < 2 ** 128
 
     TOKEN = _token
-
-    self.submission_data = shift(_gas_limit, 128) + shift(_gas_price, 64) + _max_submission_cost
-    log UpdateSubmissionData([0, 0, 0], [_gas_limit, _gas_price, _max_submission_cost])
+    self.submission_data = shift(_gas_limit, 128) + _gas_price
+    log UpdateSubmissionData([0, 0], [_gas_limit, _gas_price])
 
     assert ERC20(_token).approve(GATEWAY, max_value(uint256), default_return_value=True)
     self.is_approved[_token] = True
 
-    self.owner = msg.sender
-    log TransferOwnership(empty(address), msg.sender)
+    self.owner = _owner
+    log TransferOwnership(empty(address), _owner)
 
 
 @payable
@@ -73,8 +86,17 @@ def bridge(_token: address, _to: address, _amount: uint256):
 
     data: uint256 = self.submission_data
     gas_limit: uint256 = shift(data, -128)
-    gas_price: uint256 = shift(data, -64) % 2 ** 64
-    max_submission_cost: uint256 = data % 2 ** 64
+    gas_price: uint256 = data % 2 ** 128
+    submission_cost: uint256 = Inbox(INBOX).calculateRetryableSubmissionFee(
+        GatewayRouter(GATEWAY_ROUTER).getOutboundCalldata(
+            _token,
+            self,
+            msg.sender,
+            _amount,
+            b"",
+        )[1] + 256,
+        block.basefee
+    )
 
     # NOTE: Excess ETH fee is refunded to this bridger's address on L2.
     # After bridging, the token should arrive on Arbitrum within 10 minutes. If it
@@ -85,15 +107,19 @@ def bridge(_token: address, _to: address, _amount: uint256):
     # The calldata for this manual transaction is easily obtained by finding the reverted
     # transaction in the tx history for 0x000000000000000000000000000000000000006e on Arbiscan.
     # https://developer.offchainlabs.com/docs/l1_l2_messages#retryable-transaction-lifecycle
-    GatewayRouter(GATEWAY_ROUTER).outboundTransfer(
+    GatewayRouter(GATEWAY_ROUTER).outboundTransferCustomRefund(
         _token,
+        self.owner,
         _to,
         _amount,
         gas_limit,
         gas_price,
-        _abi_encode(max_submission_cost, b""),
-        value=gas_limit * gas_price + max_submission_cost
+        _abi_encode(submission_cost, b""),
+        value=gas_limit * gas_price + submission_cost
     )
+
+    if self.balance != 0:
+        raw_call(msg.sender, b"", value=self.balance)
 
 
 @view
@@ -102,9 +128,19 @@ def cost() -> uint256:
     """
     @notice Cost in ETH to bridge
     """
+    submission_cost: uint256 = Inbox(INBOX).calculateRetryableSubmissionFee(
+        GatewayRouter(GATEWAY_ROUTER).getOutboundCalldata(
+            TOKEN,
+            self,
+            msg.sender,
+            10 ** 36,
+            b"",
+        )[1] + 256,
+        block.basefee
+    )
     data: uint256 = self.submission_data
-    # gas_limit * gas_price + max_submission_cost
-    return shift(data, -128) * (shift(data, -64) % 2 ** 64) + data % 2 ** 64
+    # gas_limit * gas_price
+    return shift(data, -128) * data % 2 ** 128 + submission_cost
 
 
 @pure
@@ -118,23 +154,22 @@ def check(_account: address) -> bool:
 
 
 @external
-def set_submission_data(_gas_limit: uint256, _gas_price: uint256, _max_submission_cost: uint256):
+def set_submission_data(_gas_limit: uint256, _gas_price: uint256):
     """
     @notice Update the arb retryable ticket submission data
     @param _gas_limit The gas limit for the retryable ticket tx
     @param _gas_price The gas price for the retryable ticket tx
-    @param _max_submission_cost The max submission cost for the retryable ticket
     """
     assert msg.sender == self.owner
 
-    for value in [_gas_limit, _gas_price, _max_submission_cost]:
-        assert value < 2 ** 64
+    for value in [_gas_limit, _gas_price]:
+        assert value < 2 ** 128
 
     data: uint256 = self.submission_data
-    self.submission_data = shift(_gas_limit, 128) + shift(_gas_price, 64) + _max_submission_cost
+    self.submission_data = shift(_gas_limit, 128) + _gas_price
     log UpdateSubmissionData(
-        [shift(data, -128), shift(data, -64) % 2 ** 64, data % 2 ** 64],
-        [_gas_limit, _gas_price, _max_submission_cost]
+        [shift(data, -128), data % 2 ** 128],
+        [_gas_limit, _gas_price]
     )
 
 
@@ -176,13 +211,4 @@ def gas_price() -> uint256:
     """
     @notice Get gas price used for L2 retryable ticket
     """
-    return shift(self.submission_data, -64) % 2 ** 64
-
-
-@view
-@external
-def max_submission_cost() -> uint256:
-    """
-    @notice Get max submission cost for L2 retryable ticket
-    """
-    return self.submission_data % 2 ** 64
+    return self.submission_data % 2 ** 128

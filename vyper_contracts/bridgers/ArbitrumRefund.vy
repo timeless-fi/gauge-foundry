@@ -15,10 +15,10 @@ future_owner: public(address)
 
 
 @external
-def __init__():
-    self.owner = msg.sender
+def __init__(_owner: address):
+    self.owner = _owner
 
-    log TransferOwnership(empty(address), msg.sender)
+    log TransferOwnership(empty(address), _owner)
 
 
 @payable

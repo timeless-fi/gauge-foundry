@@ -16,6 +16,7 @@ contract MockBridger {
         address _recipientOfSender = recipientOfSender[msg.sender];
         address _recipient = _recipientOfSender == address(0) ? recipient : _recipientOfSender;
         ERC20(_token).transferFrom(msg.sender, _recipient, _amount);
+        if (address(this).balance != 0) payable(msg.sender).transfer(address(this).balance);
     }
 
     function cost() external view returns (uint256) {

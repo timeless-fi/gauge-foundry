@@ -73,7 +73,7 @@ def transmit_emissions(_gauge: address):
 
     # refund leftover ETH
     if self.balance != 0:
-        send(msg.sender, self.balance)
+        raw_call(msg.sender, b"", value=self.balance)
 
 
 @payable
@@ -94,7 +94,7 @@ def transmit_emissions_multiple(_gauge_list: DynArray[address, 64]):
 
     # refund leftover ETH
     if self.balance != 0:
-        send(msg.sender, self.balance)
+        raw_call(msg.sender, b"", value=self.balance)
 
 
 @payable

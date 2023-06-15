@@ -84,6 +84,12 @@ def __init__(_minter: address):
 
 @payable
 @external
+def __default__():
+    pass
+
+
+@payable
+@external
 def transmit_emissions():
     """
     @notice Mint any new emissions and transmit across to child gauge
@@ -191,6 +197,12 @@ def update_bridger():
     ERC20(TOKEN).approve(self.bridger, 0)
     ERC20(TOKEN).approve(bridger, max_value(uint256))
     self.bridger = bridger
+
+
+@external
+def withdraw_balance(recipient: address):
+    assert msg.sender == Factory(self.factory).owner()  # dev: only owner
+    raw_call(recipient, b"", value=self.balance)
 
 
 @external
