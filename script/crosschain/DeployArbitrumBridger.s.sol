@@ -17,7 +17,7 @@ contract DeployArbitrumBridgerScript is CREATE3Script, VyperDeployer {
             getCreate3ContractSalt("ArbitrumBridger"),
             bytes.concat(
                 compileContract("bridgers/ArbitrumBridger"),
-                abi.encode(getCreate3Contract("OptionsToken"), 1e5, 2 gwei, admin)
+                abi.encode(getCreate3Contract("OptionsToken"), 1e5, 0.2 gwei, admin)
             )
         );
 
