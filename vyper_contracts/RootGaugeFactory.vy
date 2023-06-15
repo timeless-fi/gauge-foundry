@@ -8,11 +8,12 @@
 
 interface Bridger:
     def check(_addr: address) -> bool: view
+    def cost() -> uint256: view
 
 interface RootGauge:
     def bridger() -> address: view
     def initialize(_bridger: address, _chain_id: uint256, _relative_weight_cap: uint256): nonpayable
-    def transmit_emissions(): nonpayable
+    def transmit_emissions(): payable
 
 
 event BridgerUpdated:
@@ -55,6 +56,7 @@ def __init__(_owner: address, _implementation: address):
     log UpdateImplementation(empty(address), _implementation)
 
 
+@payable
 @external
 def transmit_emissions(_gauge: address):
     """
@@ -64,12 +66,19 @@ def transmit_emissions(_gauge: address):
     # in most cases this will return True
     # for special bridges *cough cough Multichain, we can only do
     # one bridge per tx, therefore this will verify msg.sender in [tx.origin, self.call_proxy]
-    assert Bridger(RootGauge(_gauge).bridger()).check(msg.sender)
-    RootGauge(_gauge).transmit_emissions()
+    bridger: Bridger = Bridger(RootGauge(_gauge).bridger())
+    assert bridger.check(msg.sender)
+    cost: uint256 = bridger.cost()
+    RootGauge(_gauge).transmit_emissions(value=cost)
+
+    # refund leftover ETH
+    if self.balance != 0:
+        send(msg.sender, self.balance)
 
 
+@payable
 @external
-def transmit_emissions_multiple(_gauge_list: address[32]):
+def transmit_emissions_multiple(_gauge_list: DynArray[address, 64]):
     """
     @notice Call `transmit_emissions` on a list of root gauges
     @dev Entrypoint to request emissions for a child gauge.
@@ -78,8 +87,14 @@ def transmit_emissions_multiple(_gauge_list: address[32]):
         # in most cases this will return True
         # for special bridges *cough cough Multichain, we can only do
         # one bridge per tx, therefore this will verify msg.sender in [tx.origin, self.call_proxy]
-        assert Bridger(RootGauge(_gauge).bridger()).check(msg.sender)
-        RootGauge(_gauge).transmit_emissions()
+        bridger: Bridger = Bridger(RootGauge(_gauge).bridger())
+        assert bridger.check(msg.sender)
+        cost: uint256 = bridger.cost()
+        RootGauge(_gauge).transmit_emissions(value=cost)
+
+    # refund leftover ETH
+    if self.balance != 0:
+        send(msg.sender, self.balance)
 
 
 @payable

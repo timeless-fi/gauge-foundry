@@ -261,6 +261,148 @@ contract CrossChainE2ETest is Test, UniswapDeployer {
         assertApproxEqRel(mockToken.balanceOf(address(this)), expectedAmount, 1e12, "balance incorrect");
     }
 
+    function test_gauge_stakeRewards_bridgerCost(uint256 numWeeksWait, uint256 cost, uint256 extraValue) external {
+        numWeeksWait = bound(numWeeksWait, 1, 50);
+        cost = bound(cost, 1, 1 ether);
+        extraValue = bound(extraValue, 1, 1 ether);
+
+        // create gauge
+        IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, key, 1e18));
+        IChildGauge childGauge = IChildGauge(childFactory.deploy_gauge(key));
+
+        // approve gauge
+        vm.prank(gaugeControllerAdmin);
+        gaugeController.add_gauge(address(rootGauge), 0, 1);
+
+        // lock tokens in voting escrow
+        mockToken.mint(address(this), 1 ether);
+        mockToken.approve(address(votingEscrow), type(uint256).max);
+        votingEscrow.create_lock(1 ether, block.timestamp + 200 weeks);
+
+        // push vetoken balance from beacon to recipient
+        beacon.broadcastVeBalance(address(this), 0, 0, 0);
+
+        // stake liquidity in child gauge
+        IBunniToken bunniToken = bunniHub.getBunniToken(key);
+        bunniToken.approve(address(childGauge), type(uint256).max);
+        uint256 amount = bunniToken.balanceOf(address(this));
+        childGauge.deposit(amount);
+
+        // update mock bridger config
+        bridger.setRecipient(address(childGauge));
+        bridger.setCost(cost);
+
+        // claim rewards every week
+        // every time `childFactory.mint` is called the rewards
+        // are fully distributed after the current week ends
+        // thus we need to wait one more week
+        for (uint256 i = 0; i < numWeeksWait + 1; i++) {
+            skip(1 weeks);
+            deal(address(this), address(this).balance + cost + extraValue);
+            uint256 beforeBalance = address(this).balance;
+            rootFactory.transmit_emissions{value: cost + extraValue}(address(rootGauge));
+            assertEq(beforeBalance - address(this).balance, cost, "didn't get refund");
+            childFactory.mint(address(childGauge));
+        }
+
+        // check balance
+        uint256 expectedAmount = tokenAdmin.INITIAL_RATE() * (numWeeksWait - 1) * (1 weeks); // first week has no rewards
+        assertApproxEqRel(mockToken.balanceOf(address(this)), expectedAmount, 1e12, "balance incorrect");
+    }
+
+    function test_gauge_stakeRewards_bridgerCost_multipleGauges(
+        uint256 numWeeksWait,
+        uint256 cost,
+        uint256 numGauges,
+        uint256 extraValue
+    ) external {
+        numWeeksWait = bound(numWeeksWait, 1, 50);
+        cost = bound(cost, 1, 1 ether);
+        numGauges = bound(numGauges, 1, 10);
+        extraValue = bound(extraValue, 1, 1 ether);
+
+        // create gauge
+        IRootGauge[] memory rootGaugeList = new IRootGauge[](numGauges);
+        IChildGauge[] memory childGaugeList = new IChildGauge[](numGauges);
+        BunniKey[] memory keyList = new BunniKey[](numGauges);
+        for (uint256 i; i < numGauges; i++) {
+            BunniKey memory _key = BunniKey({
+                pool: pool,
+                tickLower: TICK_LOWER - int24(uint24(i + 1)) * pool.tickSpacing(),
+                tickUpper: TICK_UPPER + int24(uint24(i + 1)) * pool.tickSpacing()
+            });
+            keyList[i] = _key;
+            bunniHub.deployBunniToken(_key);
+            tokenA.mint(address(this), 1e18);
+            tokenB.mint(address(this), 1e18);
+            bunniHub.deposit(
+                IBunniHub.DepositParams({
+                    key: _key,
+                    amount0Desired: 1e18,
+                    amount1Desired: 1e18,
+                    amount0Min: 0,
+                    amount1Min: 0,
+                    deadline: block.timestamp,
+                    recipient: address(this)
+                })
+            );
+            IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, _key, 1e18));
+            rootGaugeList[i] = rootGauge;
+            childGaugeList[i] = IChildGauge(childFactory.deploy_gauge(_key));
+
+            // approve gauge
+            vm.prank(gaugeControllerAdmin);
+            gaugeController.add_gauge(address(rootGauge), 0, 1);
+        }
+
+        // lock tokens in voting escrow
+        mockToken.mint(address(this), 1 ether);
+        mockToken.approve(address(votingEscrow), type(uint256).max);
+        votingEscrow.create_lock(1 ether, block.timestamp + 200 weeks);
+
+        // push vetoken balance from beacon to recipient
+        beacon.broadcastVeBalance(address(this), 0, 0, 0);
+
+        for (uint256 i; i < numGauges; i++) {
+            // stake liquidity in child gauge
+            BunniKey memory _key = keyList[i];
+            IChildGauge childGauge = childGaugeList[i];
+
+            IBunniToken bunniToken = bunniHub.getBunniToken(_key);
+            bunniToken.approve(address(childGauge), type(uint256).max);
+            uint256 amount = bunniToken.balanceOf(address(this));
+            childGauge.deposit(amount);
+
+            bridger.setRecipientOfSender(address(rootGaugeList[i]), address(childGauge));
+        }
+
+        // update mock bridger config
+        bridger.setCost(cost);
+
+        // claim rewards every week
+        // every time `childFactory.mint` is called the rewards
+        // are fully distributed after the current week ends
+        // thus we need to wait one more week
+        for (uint256 i = 0; i < numWeeksWait + 1; i++) {
+            skip(1 weeks);
+            deal(address(this), address(this).balance + cost * numGauges + extraValue);
+            address[] memory rootGaugeAddressList;
+            address[] memory childGaugeAddressList;
+            assembly {
+                rootGaugeAddressList := rootGaugeList
+                childGaugeAddressList := childGaugeList
+            }
+            uint256 beforeBalance = address(this).balance;
+            rootFactory.transmit_emissions_multiple{value: cost * numGauges + extraValue}(rootGaugeAddressList);
+            assertEq(beforeBalance - address(this).balance, cost * numGauges, "didn't get refund");
+            childFactory.mint_many(childGaugeAddressList);
+        }
+
+        // check balance
+        uint256 expectedAmount = tokenAdmin.INITIAL_RATE() * (numWeeksWait - 1) * (1 weeks); // first week has no rewards
+        assertApproxEqRel(mockToken.balanceOf(address(this)), expectedAmount, 1e12, "balance incorrect");
+    }
+
     function test_gauge_stakeAndUnstake() external {
         // create gauge
         IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, key, 1e18));
@@ -784,6 +926,8 @@ contract CrossChainE2ETest is Test, UniswapDeployer {
             mockToken.allowance(address(rootGauge), newBridger), type(uint256).max, "didn't set approval to new bridger"
         );
     }
+
+    receive() external payable {}
 
     /**
      * Internal helpers

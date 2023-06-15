@@ -100,16 +100,14 @@ def mint(_gauge: address) -> uint256:
 
 @external
 @nonreentrant("lock")
-def mint_many(_gauges: address[32]) -> uint256:
+def mint_many(_gauges: DynArray[address, 64]) -> uint256:
     """
     @notice Mint everything which belongs to `msg.sender` across multiple gauges
     @param _gauges List of `LiquidityGauge` addresses
     """
     minted: uint256 = 0
-    for i in range(32):
-        if _gauges[i] == empty(address):
-            pass
-        minted += self._psuedo_mint(_gauges[i], msg.sender)
+    for _gauge in _gauges:
+        minted += self._psuedo_mint(_gauge, msg.sender)
     return minted
 
 

@@ -16,5 +16,5 @@ interface IChildGaugeFactory {
     function get_gauge_count() external view returns (uint256);
     function is_valid_gauge() external view returns (bool);
     function mint(address gauge) external returns (uint256);
-    function mintMany(address[] calldata gauges) external returns (uint256);
+    function mint_many(address[] calldata gauges) external returns (uint256);
 }

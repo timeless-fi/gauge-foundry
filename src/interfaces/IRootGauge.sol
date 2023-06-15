@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 interface IRootGauge {
-    function transmit_emissions() external;
+    function transmit_emissions() external payable;
     function integrate_fraction(address _user) external returns (uint256);
     function update_bridger() external;
     function initialize(address _bridger, uint256 _chain_id) external;

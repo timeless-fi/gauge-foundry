@@ -84,11 +84,6 @@ def __init__(_minter: address):
 
 @payable
 @external
-def __default__():
-    pass
-
-
-@external
 def transmit_emissions():
     """
     @notice Mint any new emissions and transmit across to child gauge
@@ -100,7 +95,7 @@ def transmit_emissions():
 
     if minted != 0:
         bridger: address = self.bridger
-        Bridger(bridger).bridge(TOKEN, self, minted, value=Bridger(bridger).cost())
+        Bridger(bridger).bridge(TOKEN, self, minted, value=msg.value)
 
 
 @view
