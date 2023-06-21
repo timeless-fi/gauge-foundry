@@ -18,7 +18,7 @@ contract DeployRootGaugeFactoryScript is CREATE3Script, VyperDeployer {
 
         IRootGauge rootGaugeTemplate = IRootGauge(
             create3.deploy(
-                getCreate3ContractSalt("RootGauge"),
+                getCreate3ContractSalt("ChildGauge"),
                 bytes.concat(compileContract("RootGauge"), abi.encode(getCreate3Contract("Minter")))
             )
         );

@@ -33,11 +33,11 @@ contract DeployChildGaugeFactoryScript is CREATE3Script, VyperDeployer {
 
         childGaugeFactory = IChildGaugeFactory(
             create3.deploy(
-                getCreate3ContractSalt("ChildGaugeFactory"),
+                getCreate3ContractSalt("RootGaugeFactory"),
                 bytes.concat(
                     compileContract("ChildGaugeFactory"),
                     abi.encode(
-                        token, owner, vm.envAddress("BUNNI_HUB"), getCreate3Contract("VeRecipient"), childGaugeTemplate
+                        token, owner, vm.envAddress("BUNNI_HUB"), getCreate3Contract("VeRecipient"), getCreate3Contract("ChildGauge")
                     )
                 )
             )
