@@ -8,6 +8,7 @@ contract MockBridger {
     address public recipient;
     uint256 internal _cost;
     mapping(address => address) public recipientOfSender;
+    ERC20 public bridgedToken;
 
     error MockBridger__MsgValueInsufficient();
 
@@ -15,7 +16,9 @@ contract MockBridger {
         if (msg.value < _cost) revert MockBridger__MsgValueInsufficient();
         address _recipientOfSender = recipientOfSender[msg.sender];
         address _recipient = _recipientOfSender == address(0) ? recipient : _recipientOfSender;
-        ERC20(_token).transferFrom(msg.sender, _recipient, _amount);
+        ERC20 actualToken = address(bridgedToken) == address(0) ? ERC20(_token) : bridgedToken;
+        ERC20(_token).transferFrom(msg.sender, address(this), _amount);
+        actualToken.transfer(_recipient, _amount);
         if (address(this).balance != 0) payable(msg.sender).transfer(address(this).balance);
     }
 
@@ -37,5 +40,9 @@ contract MockBridger {
 
     function setCost(uint256 newCost) external {
         _cost = newCost;
+    }
+
+    function setBridgedToken(ERC20 token) external {
+        bridgedToken = token;
     }
 }

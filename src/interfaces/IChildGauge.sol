@@ -47,4 +47,8 @@ interface IChildGauge {
     function unkillGauge() external;
     function set_tokenless_production(uint8 new_tokenless_production) external;
     function kick(address user) external;
+    function rescue_token(address _token) external;
+    function rescue_token(address _token, address recipient) external;
+    function add_reward(address _token, address _distributor) external;
+    function factory() external view returns (address);
 }

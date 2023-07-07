@@ -145,7 +145,7 @@ contract CrossChainE2ETest is Test, UniswapDeployer {
                     getCreate3ContractSalt("ChildGauge"),
                     bytes.concat(
                         vyperDeployer.compileContract("ChildGauge"),
-                        abi.encode(mockToken, getCreate3Contract("ChildGaugeFactory"), oracle)
+                        abi.encode(getCreate3Contract("ChildGaugeFactory"), oracle)
                     )
                 )
             );
@@ -925,6 +925,149 @@ contract CrossChainE2ETest is Test, UniswapDeployer {
         assertEq(
             mockToken.allowance(address(rootGauge), newBridger), type(uint256).max, "didn't set approval to new bridger"
         );
+    }
+
+    function test_childGaugeFactory_updateToken(uint256 numWeeksWait) external {
+        // verify token
+        assertEq(childFactory.token(), address(mockToken), "childFactory has wrong initial token address");
+
+        // update token
+        TestERC20Mintable newToken = new TestERC20Mintable();
+        childFactory.set_token(address(newToken));
+
+        // verify token
+        assertEq(childFactory.token(), address(newToken), "childFactory has wrong updated token address");
+
+        // test rewards
+        numWeeksWait = bound(numWeeksWait, 1, 50);
+        bridger.setBridgedToken(newToken);
+        newToken.mint(address(bridger), 1e36);
+
+        // create gauge
+        IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, key, 1e18));
+        IChildGauge childGauge = IChildGauge(childFactory.deploy_gauge(key));
+
+        // approve gauge
+        vm.prank(gaugeControllerAdmin);
+        gaugeController.add_gauge(address(rootGauge), 0, 1);
+
+        // lock tokens in voting escrow
+        mockToken.mint(address(this), 1 ether);
+        mockToken.approve(address(votingEscrow), type(uint256).max);
+        votingEscrow.create_lock(1 ether, block.timestamp + 200 weeks);
+
+        // push vetoken balance from beacon to recipient
+        beacon.broadcastVeBalance(address(this), 0, 0, 0);
+
+        // stake liquidity in child gauge
+        IBunniToken bunniToken = bunniHub.getBunniToken(key);
+        bunniToken.approve(address(childGauge), type(uint256).max);
+        uint256 amount = bunniToken.balanceOf(address(this));
+        childGauge.deposit(amount);
+
+        // claim rewards every week
+        bridger.setRecipient(address(childGauge));
+        // every time `childFactory.mint` is called the rewards
+        // are fully distributed after the current week ends
+        // thus we need to wait one more week
+        for (uint256 i = 0; i < numWeeksWait + 1; i++) {
+            skip(1 weeks);
+            rootFactory.transmit_emissions(address(rootGauge));
+            childFactory.mint(address(childGauge));
+        }
+
+        // check balance
+        uint256 expectedAmount = tokenAdmin.INITIAL_RATE() * (numWeeksWait - 1) * (1 weeks); // first week has no rewards
+        assertApproxEqRel(newToken.balanceOf(address(this)), expectedAmount, 1e12, "balance incorrect");
+    }
+
+    function test_childGaugeFactory_updateToken_cannotBeCalledByRando(address rando, address newToken) external {
+        vm.assume(rando != address(this));
+        vm.prank(rando);
+        vm.expectRevert();
+        childFactory.set_token(newToken);
+    }
+
+    function test_childGaugeFactory_rescueToken(uint256 amount, address recipient) external {
+        vm.assume(address(childFactory) != recipient);
+
+        TestERC20Mintable stuckToken = new TestERC20Mintable();
+        stuckToken.mint(address(childFactory), amount);
+        assertEq(stuckToken.balanceOf(address(childFactory)), amount);
+
+        childFactory.rescue_token(address(stuckToken), recipient);
+        assertEq(stuckToken.balanceOf(address(childFactory)), 0);
+        assertEq(stuckToken.balanceOf(recipient), amount);
+    }
+
+    function test_childGaugeFactory_rescueToken_cannotBeCalledByRando(address rando, uint256 amount, address recipient)
+        external
+    {
+        vm.assume(rando != address(this));
+
+        TestERC20Mintable stuckToken = new TestERC20Mintable();
+        stuckToken.mint(address(childFactory), amount);
+
+        vm.prank(rando);
+        vm.expectRevert();
+        childFactory.rescue_token(address(stuckToken), recipient);
+    }
+
+    function test_childGaugeFactory_rescueToken_cannotStealTokens(uint256 amount, address recipient) external {
+        mockToken.mint(address(childFactory), amount);
+
+        vm.expectRevert();
+        childFactory.rescue_token(address(mockToken), recipient);
+    }
+
+    function test_childGauge_rescueToken(uint256 amount, address recipient) external {
+        IChildGauge childGauge = IChildGauge(childFactory.deploy_gauge(key));
+
+        vm.assume(address(childGauge) != recipient);
+
+        TestERC20Mintable stuckToken = new TestERC20Mintable();
+        stuckToken.mint(address(childGauge), amount);
+        assertEq(stuckToken.balanceOf(address(childGauge)), amount);
+
+        childGauge.rescue_token(address(stuckToken), recipient);
+        assertEq(stuckToken.balanceOf(address(childGauge)), 0);
+        assertEq(stuckToken.balanceOf(recipient), amount);
+    }
+
+    function test_childGauge_rescueToken_cannotBeCalledByRando(address rando, uint256 amount, address recipient)
+        external
+    {
+        vm.assume(rando != address(this));
+
+        IChildGauge childGauge = IChildGauge(childFactory.deploy_gauge(key));
+        TestERC20Mintable stuckToken = new TestERC20Mintable();
+        stuckToken.mint(address(childGauge), amount);
+
+        vm.prank(rando);
+        vm.expectRevert();
+        childGauge.rescue_token(address(stuckToken), recipient);
+    }
+
+    function test_childGauge_rescueToken_cannotStealTokens(uint256 amount, address recipient) external {
+        IChildGauge childGauge = IChildGauge(childFactory.deploy_gauge(key));
+
+        // cannot steal core reward token
+        mockToken.mint(address(childGauge), amount);
+        vm.expectRevert();
+        childGauge.rescue_token(address(mockToken), recipient);
+
+        // cannot steal LP token
+        IBunniToken bunniToken = bunniHub.getBunniToken(key);
+        deal(address(bunniToken), address(childGauge), amount);
+        vm.expectRevert();
+        childGauge.rescue_token(address(bunniToken), recipient);
+
+        // cannot steal custom reward token
+        TestERC20Mintable stuckToken = new TestERC20Mintable();
+        childGauge.add_reward(address(stuckToken), address(this));
+        stuckToken.mint(address(childGauge), amount);
+        vm.expectRevert();
+        childGauge.rescue_token(address(stuckToken), recipient);
     }
 
     receive() external payable {}

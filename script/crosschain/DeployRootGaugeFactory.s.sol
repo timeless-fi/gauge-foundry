@@ -10,22 +10,24 @@ import {IRootGaugeFactory} from "../../src/interfaces/IRootGaugeFactory.sol";
 contract DeployRootGaugeFactoryScript is CREATE3Script, VyperDeployer {
     constructor() CREATE3Script(vm.envString("VERSION")) {}
 
-    function run() public returns (IRootGaugeFactory rootGaugeFactory) {
+    function run() public returns (IRootGauge rootGaugeTemplate, IRootGaugeFactory rootGaugeFactory) {
         uint256 deployerPrivateKey = uint256(vm.envBytes32("PRIVATE_KEY"));
         vm.startBroadcast(deployerPrivateKey);
 
         address admin = vm.envAddress("ADMIN");
 
-        IRootGauge rootGaugeTemplate = IRootGauge(
+        string memory fixVersion = "1.0.1";
+
+        rootGaugeTemplate = IRootGauge(
             create3.deploy(
-                getCreate3ContractSalt("ChildGauge"),
+                getCreate3ContractSalt("RootGauge", fixVersion),
                 bytes.concat(compileContract("RootGauge"), abi.encode(getCreate3Contract("Minter")))
             )
         );
 
         rootGaugeFactory = IRootGaugeFactory(
             create3.deploy(
-                getCreate3ContractSalt("RootGaugeFactory"),
+                getCreate3ContractSalt("RootGaugeFactory", fixVersion),
                 bytes.concat(compileContract("RootGaugeFactory"), abi.encode(admin, rootGaugeTemplate))
             )
         );

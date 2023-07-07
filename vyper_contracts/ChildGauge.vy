@@ -15,6 +15,7 @@ interface ERC20Extended:
 interface Factory:
     def owner() -> address: view
     def voting_escrow() -> address: view
+    def token() -> address: view
 
 interface Minter:
     def minted(_user: address, _gauge: address) -> uint256: view
@@ -103,7 +104,6 @@ WEEK: constant(uint256) = 86400 * 7
 VERSION: constant(String[8]) = "v0.1.0"
 
 
-TOKEN: immutable(address)
 FACTORY: immutable(address)
 UNISWAP_POOR_ORACLE: immutable(UniswapPoorOracle)
 
@@ -151,10 +151,9 @@ inflation_rate: public(HashMap[uint256, uint256])
 
 
 @external
-def __init__(_token: address, _factory: address, _uniswap_poor_oracle: UniswapPoorOracle):
+def __init__(_factory: address, _uniswap_poor_oracle: UniswapPoorOracle):
     self.lp_token = 0x000000000000000000000000000000000000dEaD
 
-    TOKEN = _token
     FACTORY = _factory
     UNISWAP_POOR_ORACLE = _uniswap_poor_oracle
 
@@ -190,6 +189,7 @@ def _checkpoint(_user: address):
             week_time = min(week_time + WEEK, block.timestamp)
 
     # check TOKEN balance and increase weekly inflation rate by delta for the rest of the week
+    TOKEN: address = Factory(FACTORY).token()
     token_balance: uint256 = ERC20(TOKEN).balanceOf(self)
     if token_balance != 0:
         current_week: uint256 = block.timestamp / WEEK
@@ -728,6 +728,19 @@ def set_tokenless_production(new_tokenless_production: uint8):
     self.tokenless_production = new_tokenless_production
 
     log NewTokenlessProduction(new_tokenless_production)
+
+
+@external
+def rescue_token(_token: address, _recipient: address = msg.sender):
+    """
+    @notice Enables rescuing stuck tokens
+    @dev Only the owner can call this function. Useful for when `set_token()` is called
+    and there's still a balance of the old `self.token` in the factory.
+    """
+    assert msg.sender == Factory(FACTORY).owner() # dev: only owner
+    assert (_token not in [self.lp_token, Factory(FACTORY).token()]) and (_token not in self.reward_tokens) # dev: not stealing
+
+    assert ERC20(_token).transfer(_recipient, ERC20(_token).balanceOf(self), default_return_value=True)
 
 
 @view

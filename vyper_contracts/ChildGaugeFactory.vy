@@ -34,17 +34,21 @@ event UpdateVotingEscrow:
     _old_voting_escrow: address
     _new_voting_escrow: address
 
+event UpdateToken:
+    _old_token: address
+    _new_token: address
+
 event TransferOwnership:
     _old_owner: address
     _new_owner: address
 
 
-TOKEN: immutable(address)
 BUNNI_HUB: immutable(BunniHub)
 
 
 get_implementation: public(address)
 voting_escrow: public(address)
+token: public(address)
 
 owner: public(address)
 future_owner: public(address)
@@ -58,8 +62,10 @@ get_gauge: public(address[max_value(uint256)])
 
 @external
 def __init__(_token: address, _owner: address, _bunni_hub: BunniHub, _voting_escrow: address, _implementation: address):
-    TOKEN = _token
     BUNNI_HUB = _bunni_hub
+
+    self.token = _token
+    log UpdateToken(empty(address), _token)
 
     self.owner = _owner
     log TransferOwnership(empty(address), _owner)
@@ -81,7 +87,7 @@ def _psuedo_mint(_gauge: address, _user: address) -> uint256:
 
     if to_mint != 0:
         # transfer tokens to user
-        assert ERC20(TOKEN).transfer(_user, to_mint, default_return_value=True)
+        assert ERC20(self.token).transfer(_user, to_mint, default_return_value=True)
         self.minted[_user][_gauge] = total_mint
 
         log Minted(_user, _gauge, total_mint)
@@ -164,6 +170,18 @@ def set_implementation(_implementation: address):
 
 
 @external
+def set_token(_token: address):
+    """
+    @notice Set the reward token
+    @param _token The address of the reward token to use
+    """
+    assert msg.sender == self.owner  # dev: only owner
+
+    log UpdateToken(self.token, _token)
+    self.token = _token
+
+
+@external
 def commit_transfer_ownership(_future_owner: address):
     """
     @notice Transfer ownership to `_future_owner`
@@ -185,3 +203,15 @@ def accept_transfer_ownership():
     log TransferOwnership(self.owner, msg.sender)
     self.owner = msg.sender
 
+
+@external
+def rescue_token(_token: address, _recipient: address = msg.sender):
+    """
+    @notice Enables rescuing stuck tokens
+    @dev Only the owner can call this function. Useful for when `set_token()` is called
+    and there's still a balance of the old `self.token` in the factory.
+    """
+    assert msg.sender == self.owner  # dev: only owner
+    assert _token != self.token # dev: not current reward token
+
+    assert ERC20(_token).transfer(_recipient, ERC20(_token).balanceOf(self), default_return_value=True)

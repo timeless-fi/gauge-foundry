@@ -17,4 +17,8 @@ interface IChildGaugeFactory {
     function is_valid_gauge() external view returns (bool);
     function mint(address gauge) external returns (uint256);
     function mint_many(address[] calldata gauges) external returns (uint256);
+    function token() external view returns (address);
+    function set_token(address _token) external;
+    function rescue_token(address _token) external;
+    function rescue_token(address _token, address recipient) external;
 }
