@@ -67,6 +67,8 @@ interface IGaugeController {
 
     function get_weights_sum_per_type(int128) external view returns (uint256);
 
+    function gauge_exists(address gauge) external view returns (bool);
+
     // External functions
     function add_gauge(address, int128, uint256) external;
 
