@@ -34,6 +34,8 @@ contract CrosschainRewardTransmitter is IGelatoResolver, Owned {
     IGaugeController public immutable gaugeController;
     IRootGaugeFactory public immutable rootGaugeFactory;
 
+    mapping(uint256 => bool) public didTransmitForEpoch;
+
     constructor(
         address owner_,
         address transmitter_,
@@ -47,14 +49,16 @@ contract CrosschainRewardTransmitter is IGelatoResolver, Owned {
 
     function transmitMultiple(address[] calldata gaugeList, uint256 cost) external {
         if (msg.sender != transmitter) revert CrosschainRewardTransmitter__Unauthorized();
+        uint256 epoch = block.timestamp / (1 weeks);
+        didTransmitForEpoch[epoch] = true;
         rootGaugeFactory.transmit_emissions_multiple{value: cost}(gaugeList);
     }
 
     function checker() external view override returns (bool canExec, bytes memory execPayload) {
-        // ensure time is slightly before next epoch
+        // ensure time is slightly before next epoch and we haven't executed for this epoch
         uint256 epoch = block.timestamp / (1 weeks);
         uint256 nextEpochStart = (epoch + 1) * (1 weeks);
-        if (block.timestamp < nextEpochStart - WINDOW) return (false, bytes(""));
+        if (block.timestamp < nextEpochStart - WINDOW || didTransmitForEpoch[epoch]) return (false, bytes(""));
 
         // construct gauge list
         uint256 numGauges = uint256(int256(gaugeController.n_gauges()));
