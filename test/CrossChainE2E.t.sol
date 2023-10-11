@@ -36,6 +36,7 @@ import {IChildGauge} from "../src/interfaces/IChildGauge.sol";
 import {IChildGaugeFactory} from "../src/interfaces/IChildGaugeFactory.sol";
 import {MockBridger} from "./mocks/MockBridger.sol";
 import {CrosschainRewardTransmitter} from "../src/automation/CrosschainRewardTransmitter.sol";
+import {CrosschainRewardTransmitterAlter} from "../src/automation/CrosschainRewardTransmitterAlter.sol";
 
 contract CrossChainE2ETest is Test, UniswapDeployer {
     string constant version = "1.0.0";
@@ -79,6 +80,7 @@ contract CrossChainE2ETest is Test, UniswapDeployer {
     MockVeRecipient veRecipient;
     MockBridger bridger;
     CrosschainRewardTransmitter transmitter;
+    CrosschainRewardTransmitterAlter transmitterAlter;
 
     function setUp() public {
         // init accounts
@@ -219,6 +221,8 @@ contract CrossChainE2ETest is Test, UniswapDeployer {
 
         // deploy transmitter
         transmitter = new CrosschainRewardTransmitter(address(this), address(this), gaugeController, rootFactory);
+        transmitterAlter =
+            new CrosschainRewardTransmitterAlter(address(this), address(this), gaugeController, rootFactory);
     }
 
     /**
@@ -1140,6 +1144,71 @@ contract CrossChainE2ETest is Test, UniswapDeployer {
         (bool success,) = address(transmitter).call(execPayload);
         assertEq(success, true, "exec unsuccessful");
         assertEq(address(transmitter).balance, 0, "transmitter still has balance");
+    }
+
+    function test_transmitterAlter_transmitMultiple(uint256 cost, uint256 numGauges) external {
+        cost = bound(cost, 1, 1 ether);
+        numGauges = bound(numGauges, 1, 10);
+
+        // warp to epoch start
+        uint256 epoch = block.timestamp / (1 weeks);
+        uint256 currentEpochStart = epoch * (1 weeks);
+        vm.warp(currentEpochStart);
+
+        // update mock bridger config
+        bridger.setCost(cost);
+
+        // create gauges
+        IRootGauge[] memory rootGaugeList = new IRootGauge[](numGauges);
+        IChildGauge[] memory childGaugeList = new IChildGauge[](numGauges);
+        BunniKey[] memory keyList = new BunniKey[](numGauges);
+        for (uint256 i; i < numGauges; i++) {
+            BunniKey memory _key = BunniKey({
+                pool: pool,
+                tickLower: TICK_LOWER - int24(uint24(i + 1)) * pool.tickSpacing(),
+                tickUpper: TICK_UPPER + int24(uint24(i + 1)) * pool.tickSpacing()
+            });
+            keyList[i] = _key;
+            bunniHub.deployBunniToken(_key);
+            tokenA.mint(address(this), 1e18);
+            tokenB.mint(address(this), 1e18);
+            bunniHub.deposit(
+                IBunniHub.DepositParams({
+                    key: _key,
+                    amount0Desired: 1e18,
+                    amount1Desired: 1e18,
+                    amount0Min: 0,
+                    amount1Min: 0,
+                    deadline: block.timestamp,
+                    recipient: address(this)
+                })
+            );
+            IRootGauge rootGauge = IRootGauge(rootFactory.deploy_gauge(block.chainid, _key, 1e18));
+            rootGaugeList[i] = rootGauge;
+            childGaugeList[i] = IChildGauge(childFactory.deploy_gauge(_key));
+
+            // approve gauge
+            vm.prank(gaugeControllerAdmin);
+            gaugeController.add_gauge(address(rootGauge), 0, 1);
+        }
+
+        // send ETH to transmitter
+        payable(address(transmitterAlter)).transfer(cost * numGauges);
+
+        // exec
+        (bool canExec, bytes memory execPayload) = transmitterAlter.checker();
+        assertEq(canExec, true, "cannot exec");
+        address[] memory gaugeList;
+        assembly {
+            gaugeList := rootGaugeList
+        }
+        assertEq(
+            execPayload,
+            abi.encodeCall(CrosschainRewardTransmitterAlter.transmitMultiple, (gaugeList, cost * numGauges))
+        );
+        (bool success,) = address(transmitterAlter).call(execPayload);
+        assertEq(success, true, "exec unsuccessful");
+        assertEq(address(transmitterAlter).balance, 0, "transmitter still has balance");
     }
 
     receive() external payable {}
