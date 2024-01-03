@@ -18,12 +18,12 @@ contract DeployCrosschainRewardTransmitterAlterScript is CREATE3Script {
         transmitter = CrosschainRewardTransmitterAlter(
             payable(
                 create3.deploy(
-                    getCreate3ContractSalt("CrosschainRewardTransmitterAlter"),
+                    getCreate3ContractSalt("CrosschainRewardTransmitterAlter", fixVersion),
                     bytes.concat(
                         type(CrosschainRewardTransmitterAlter).creationCode,
                         abi.encode(
                             admin,
-                            0x02854a16D39aD1B4b0Cbd60291B509Ce07dad5db,
+                            0x78eb40714Fa6229e46beceaA50c5bC84Cf362A7c,
                             getCreate3Contract("GaugeController"),
                             getCreate3Contract("RootGaugeFactory", fixVersion)
                         )
