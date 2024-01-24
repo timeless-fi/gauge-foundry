@@ -44,7 +44,7 @@ xcall_cost: uint256
 
 
 @external
-def __init__( _connext: address, _lockbox: address, _destination_domain: uint32, _xcall_cost: uint256, _owner: address):
+def __init__(_connext: address, _lockbox: address, _destination_domain: uint32, _xcall_cost: uint256, _owner: address):
     CONNEXT = _connext
     LOCKBOX = _lockbox
     DESTINATION_DOMAIN = _destination_domain
